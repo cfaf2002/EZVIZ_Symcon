@@ -244,6 +244,11 @@
             "type": "Button",
             "caption": "Stream-Adresse anzeigen",
             "onClick": "$u = EZVIZ_GetStreamUrl($id); echo $u !== '' ? $u : 'IP-Adresse noch unbekannt.';"
+        },
+        {
+            "type": "Button",
+            "caption": "Timer prüfen",
+            "onClick": "echo EZVIZ_GetTimerInfo($id);"
         }
     ],
     "status": [

@@ -46,6 +46,10 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 13)**
+- Kachel fordert selbst alle 30 s ein neues Standbild an, solange sie angezeigt wird (unabhängig von den Symcon-Timern)
+- Button „Timer prüfen“ in Konto und Kamera zeigt Intervall, letzten und nächsten Lauf der Timer (Fehlersuche)
+
 **Version 1.0 (Build 12)**
 - Konto erneuert die Sitzung jetzt bei jedem Fehler der Geräteliste (EZVIZ meldet eine abgelaufene Sitzung nicht immer gleich) – vorher konnte der automatische Abruf dauerhaft hängen bleiben
 - Konto zeigt, ob der automatische Abruf läuft, und den letzten Fehler; Fehler stehen einmalig im Meldungsfenster

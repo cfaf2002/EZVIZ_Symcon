@@ -353,6 +353,26 @@ class EZVIZKamera extends IPSModuleStrict
     }
 
     /**
+     * Zustand der eigenen Timer als Text (Fehlersuche).
+     */
+    public function GetTimerInfo(): string
+    {
+        $Zeilen = [];
+        foreach (IPS_GetTimerList() as $TimerID) {
+            $T = IPS_GetTimer($TimerID);
+            if (($T['InstanceID'] ?? 0) != $this->InstanceID) {
+                continue;
+            }
+            $Zeit = function ($Wert) {
+                return (is_numeric($Wert) && $Wert > 0) ? date('H:i:s', (int) $Wert) : '–';
+            };
+            $Zeilen[] = $T['Name'] . ': alle ' . round(($T['Interval'] ?? 0) / 1000, 1) . ' s, zuletzt ' . $Zeit($T['LastRun'] ?? 0)
+                . ', nächster ' . $Zeit($T['NextRun'] ?? 0) . ', läuft gerade ' . (!empty($T['Running']) ? 'ja' : 'nein');
+        }
+        return 'Jetzt ' . date('H:i:s') . "\n" . (count($Zeilen) ? implode("\n", $Zeilen) : 'Keine Timer gefunden');
+    }
+
+    /**
      * Vom Timer aufgerufen: regelmäßiges Standbild.
      */
     public function TimerSnapshot(): void
@@ -972,7 +992,8 @@ class EZVIZKamera extends IPSModuleStrict
             'akkuSchwach'=> (bool) $Wert('AkkuSchwach', false),
             'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit'),
             'bildArt'    => 'Standbild',
-            'fehler'     => $this->ReadAttributeString('StandbildFehler')
+            'fehler'     => $this->ReadAttributeString('StandbildFehler'),
+            'intervall'  => (int) ($this->AutoIntervall()[0] / 1000)
         ];
         if ($MitBild) {
             $K['bild'] = '';
@@ -1009,6 +1030,11 @@ class EZVIZKamera extends IPSModuleStrict
         }
         switch ((string) ($A['aktion'] ?? '')) {
             case 'bild':
+                // Automatische Anfragen der Kachel: nicht öfter als im Intervall (mehrere Geräte offen)
+                $Ms = $this->AutoIntervall()[0];
+                if (!empty($A['auto']) && ($Ms <= 0 || time() - $this->ReadAttributeInteger('StandbildZeit') < $Ms / 1000 - 5)) {
+                    return;
+                }
                 $this->UpdateSnapshot();
                 break;
             case 'schwenken':

@@ -166,6 +166,26 @@ class EZVIZKonto extends IPSModuleStrict
     }
 
     /**
+     * Zustand der eigenen Timer als Text (Fehlersuche).
+     */
+    public function GetTimerInfo(): string
+    {
+        $Zeilen = [];
+        foreach (IPS_GetTimerList() as $TimerID) {
+            $T = IPS_GetTimer($TimerID);
+            if (($T['InstanceID'] ?? 0) != $this->InstanceID) {
+                continue;
+            }
+            $Zeit = function ($Wert) {
+                return (is_numeric($Wert) && $Wert > 0) ? date('H:i:s', (int) $Wert) : '–';
+            };
+            $Zeilen[] = $T['Name'] . ': alle ' . round(($T['Interval'] ?? 0) / 1000, 1) . ' s, zuletzt ' . $Zeit($T['LastRun'] ?? 0)
+                . ', nächster ' . $Zeit($T['NextRun'] ?? 0) . ', läuft gerade ' . (!empty($T['Running']) ? 'ja' : 'nein');
+        }
+        return 'Jetzt ' . date('H:i:s') . "\n" . (count($Zeilen) ? implode("\n", $Zeilen) : 'Keine Timer gefunden');
+    }
+
+    /**
      * Anfragen der Kind-Instanzen.
      */
     public function ForwardData(string $JSONString): string

@@ -94,6 +94,11 @@
             "type": "Button",
             "caption": "Jetzt abfragen",
             "onClick": "echo EZVIZ_RefreshAll($id) ? count(EZVIZ_GetDevices($id)) . ' Geräte abgefragt.' : 'Abfrage fehlgeschlagen. Details im Debug.';"
+        },
+        {
+            "type": "Button",
+            "caption": "Timer prüfen",
+            "onClick": "echo EZVIZ_GetTimerInfo($id);"
         }
     ],
     "status": [

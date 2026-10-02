@@ -176,6 +176,20 @@
     }
     setInterval(alter, 5000);
 
+    // Solange die Kachel sichtbar ist, selbst regelmäßig ein neues Standbild anfordern
+    // (gleicher Weg wie der Knopf „Bild“ – unabhängig von den Timern in Symcon)
+    var letzteAnfrage = 0;
+    setInterval(function () {
+        var s = ezviz.intervall || 0;
+        if (s <= 0 || document.hidden || ezviz.schlaf || !ezviz.online) return;
+        var jetzt = Date.now() / 1000;
+        var alt = jetzt - (ezviz.bildZeit || 0);
+        if (alt >= s && jetzt - letzteAnfrage >= s) {
+            letzteAnfrage = jetzt;
+            requestAction('Kachel', JSON.stringify({ aktion: 'bild', auto: true }));
+        }
+    }, 5000);
+
     function aktion(name, extra) {
         var a = { aktion: name };
         for (var k in (extra || {})) a[k] = extra[k];
