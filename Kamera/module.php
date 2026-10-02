@@ -43,6 +43,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyBoolean('Standbild', true);
         $this->RegisterPropertyInteger('StandbildQuelle', 0);
         $this->RegisterPropertyInteger('StandbildIntervall', 30);
+        $this->RegisterPropertyBoolean('StandbildAkku', false);
         $this->RegisterPropertyString('FFmpeg', '');
         $this->RegisterPropertyBoolean('Kachel', true);
         $this->RegisterPropertyBoolean('Alarmbild', true);
@@ -59,6 +60,8 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeInteger('StandbildZeit', 0);
         $this->RegisterAttributeInteger('LokalPause', 0);
         $this->RegisterAttributeBoolean('AkkuGemeldet', false);
+        $this->RegisterAttributeString('StandbildFehler', '');
+        $this->RegisterAttributeString('StandbildWeg', '');
         $this->RegisterAttributeString('FFmpegPfad', '');
 
         $this->RegisterTimer('BewegungAus', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "BewegungAus", true);');
@@ -216,6 +219,12 @@ class EZVIZKamera extends IPSModuleStrict
             if (($Element['name'] ?? '') === 'Geraeteinfo') {
                 $Element['caption'] = $Info;
             }
+            if (($Element['name'] ?? '') === 'StandbildInfo') {
+                $Zeit = $this->ReadAttributeInteger('StandbildZeit');
+                $Fehler = $this->ReadAttributeString('StandbildFehler');
+                $Element['caption'] = 'Standbild: ' . ($Zeit > 0 ? 'zuletzt ' . date('d.m. H:i:s', $Zeit) . ' (' . $this->ReadAttributeString('StandbildWeg') . ')' : 'noch keins')
+                    . ($Fehler !== '' ? ' – letzter Versuch ' . $Fehler : '');
+            }
             if (($Element['name'] ?? '') === 'StreamInfo') {
                 $Element['caption'] = $Url !== '' ? 'RTSP: ' . $Url : 'RTSP: IP-Adresse noch unbekannt';
             }
@@ -319,25 +328,76 @@ class EZVIZKamera extends IPSModuleStrict
         }
         $Quelle = $this->ReadPropertyInteger('StandbildQuelle');
         $Bild = null;
-        // Automatisch: klappt lokal nicht, 10 Minuten lang direkt die Cloud nehmen
-        if ($Quelle === 2 || ($Quelle === 0 && $this->ReadAttributeInteger('LokalPause') < time())) {
-            $Bild = $this->StandbildLokal();
-            if ($Bild === null && $Quelle === 0) {
-                $this->WriteAttributeInteger('LokalPause', time() + 600);
+        $Fehler = [];
+        $Weg = '';
+        // Akku-Kameras schlafen meist – lokal ist dann niemand erreichbar, also gleich die Cloud
+        $Lokal = $Quelle === 2 || ($Quelle === 0 && !$this->HatAkku() && $this->ReadAttributeInteger('LokalPause') < time());
+        if ($Lokal) {
+            $Bild = $this->StandbildLokal($Fehler);
+            if ($Bild === null) {
+                // zweiter Versuch – die Kamera lässt oft nur eine Verbindung gleichzeitig zu
+                usleep(500000);
+                $Bild = $this->StandbildLokal($Fehler);
             }
+            if ($Bild === null && $Quelle === 0) {
+                // 3 Minuten lang direkt die Cloud nehmen, dann wieder lokal versuchen
+                $this->WriteAttributeInteger('LokalPause', time() + 180);
+            }
+            $Weg = 'lokal';
         }
         if ($Bild === null && $Quelle !== 2) {
-            $Bild = $this->StandbildCloud();
+            $Bild = $this->StandbildCloud($Fehler);
+            $Weg = 'Cloud';
         }
         if ($Bild === null) {
+            $Text = 'Kein neues Bild: ' . implode(' / ', array_unique($Fehler));
+            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . $Text);
+            $this->SendDebug('Standbild', $Text, 0);
+            $this->KachelSenden();
             return false;
         }
+        $Bild = $this->BildVerkleinern($Bild);
         $ID = $this->Medium('Standbild', MEDIATYPE_IMAGE, 'Standbild', 39);
         IPS_SetMediaFile($ID, 'media/EZVIZ_' . $this->InstanceID . '_Standbild.jpg', false);
         IPS_SetMediaContent($ID, base64_encode($Bild));
         $this->WriteAttributeInteger('StandbildZeit', time());
+        $this->WriteAttributeString('StandbildFehler', '');
+        $this->WriteAttributeString('StandbildWeg', $Weg);
+        $this->SendDebug('Standbild', 'aktualisiert (' . $Weg . ', ' . round(strlen($Bild) / 1024) . ' KB)', 0);
         $this->KachelSenden(true);
         return true;
+    }
+
+    /**
+     * Verkleinert große Bilder (z. B. 2K-Fotos aus der Cloud) auf höchstens 1280 Pixel Breite,
+     * damit die Kachel sie schnell bekommt.
+     */
+    private function BildVerkleinern(string $Bild): string
+    {
+        if (!function_exists('imagecreatefromstring') || strlen($Bild) < 150000) {
+            return $Bild;
+        }
+        $Quelle = @imagecreatefromstring($Bild);
+        if ($Quelle === false) {
+            return $Bild;
+        }
+        $B = imagesx($Quelle);
+        $H = imagesy($Quelle);
+        $Ziel = $Quelle;
+        if ($B > 1280) {
+            $NeuH = (int) round($H * 1280 / $B);
+            $Ziel = imagecreatetruecolor(1280, $NeuH);
+            imagecopyresampled($Ziel, $Quelle, 0, 0, 0, 0, 1280, $NeuH, $B, $H);
+        }
+        ob_start();
+        imagejpeg($Ziel, null, 80);
+        $Neu = (string) ob_get_clean();
+        return ($Neu !== '' && strlen($Neu) < strlen($Bild)) ? $Neu : $Bild;
+    }
+
+    private function HatAkku(): bool
+    {
+        return (bool) @$this->GetIDForIdent('Akku');
     }
 
     public function GetVisualizationTile(): string
@@ -550,12 +610,13 @@ class EZVIZKamera extends IPSModuleStrict
     /**
      * Standbild lokal: ein einzelnes Bild per FFmpeg aus dem RTSP-Stream.
      */
-    private function StandbildLokal(): ?string
+    private function StandbildLokal(array &$Fehler): ?string
     {
         $FFmpeg = $this->FFmpegFinden();
         $Url = $this->StreamUrl(false);
         if ($FFmpeg === '' || $Url === '') {
-            $this->SendDebug('Standbild lokal', $FFmpeg === '' ? 'FFmpeg nicht gefunden' : 'IP-Adresse unbekannt', 0);
+            $Fehler[] = 'lokal: ' . ($FFmpeg === '' ? 'FFmpeg nicht gefunden' : 'IP-Adresse unbekannt');
+            $this->SendDebug('Standbild lokal', end($Fehler), 0);
             return null;
         }
         $Datei = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ezviz_' . $this->InstanceID . '.jpg';
@@ -564,7 +625,7 @@ class EZVIZKamera extends IPSModuleStrict
         $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -i ' . escapeshellarg($Url)
             . ' -frames:v 1 -q:v 4 -y ' . escapeshellarg($Datei);
         if (DIRECTORY_SEPARATOR === '/' && is_executable('/usr/bin/timeout')) {
-            $Befehl = '/usr/bin/timeout 10 ' . $Befehl;
+            $Befehl = '/usr/bin/timeout 20 ' . $Befehl;
         }
         $Start = microtime(true);
         $Ausgabe = [];
@@ -574,7 +635,9 @@ class EZVIZKamera extends IPSModuleStrict
         $Bild = is_file($Datei) ? file_get_contents($Datei) : false;
         @unlink($Datei);
         if ($Code !== 0 || !is_string($Bild) || $Bild === '') {
-            $this->SendDebug('Standbild lokal', 'fehlgeschlagen (' . $Code . '): ' . implode(' ', array_slice($Ausgabe, 0, 3)), 0);
+            $Grund = $Code === 124 ? 'Zeitüberschreitung (Kamera antwortet nicht)' : trim(implode(' ', array_slice($Ausgabe, -2)));
+            $Fehler[] = 'lokal: ' . ($Grund !== '' ? mb_substr($Grund, 0, 120) : 'Fehler ' . $Code);
+            $this->SendDebug('Standbild lokal', 'fehlgeschlagen (' . $Code . '): ' . implode(' ', $Ausgabe), 0);
             return null;
         }
         $this->SendDebug('Standbild lokal', strlen($Bild) . ' Bytes in ' . round(microtime(true) - $Start, 1) . ' s', 0);
@@ -584,19 +647,25 @@ class EZVIZKamera extends IPSModuleStrict
     /**
      * Standbild über die Cloud: die Kamera macht ein Foto und lädt es hoch.
      */
-    private function StandbildCloud(): ?string
+    private function StandbildCloud(array &$Fehler): ?string
     {
         $Result = $this->Senden('PUT', '/v3/devconfig/v1/' . $this->Serial() . '/1/capture');
         if (!$Result['Success']) {
-            $this->SendDebug('Standbild Cloud', 'fehlgeschlagen: ' . $Result['Error'], 0);
+            $Fehler[] = 'Cloud: ' . trim($Result['Error']);
+            $this->SendDebug('Standbild Cloud', 'fehlgeschlagen: ' . $Result['Error'] . ' ' . json_encode($Result['Data']), 0);
             return null;
         }
         $Url = self::BildUrlSuchen($Result['Data']);
         if ($Url === null) {
-            $this->SendDebug('Standbild Cloud', 'keine Bildadresse in der Antwort', 0);
+            $Fehler[] = 'Cloud: keine Bildadresse';
+            $this->SendDebug('Standbild Cloud', 'keine Bildadresse in der Antwort: ' . json_encode($Result['Data']), 0);
             return null;
         }
-        return $this->BildHerunterladen($Url, 'Standbild Cloud');
+        $Bild = $this->BildHerunterladen($Url, 'Standbild Cloud');
+        if ($Bild === null) {
+            $Fehler[] = 'Cloud: Bild nicht ladbar oder Verifizierungscode falsch';
+        }
+        return $Bild;
     }
 
     private static function BildUrlSuchen($Wert): ?string
@@ -694,6 +763,10 @@ class EZVIZKamera extends IPSModuleStrict
     private function StandbildTimer(): void
     {
         $Sekunden = $this->ReadPropertyInteger('StandbildIntervall');
+        // Akku-Kameras: regelmäßige Fotos würden den Akku leeren – nur bei Alarm/auf Knopfdruck
+        if ($this->HatAkku() && !$this->ReadPropertyBoolean('StandbildAkku')) {
+            $Sekunden = 0;
+        }
         if (!$this->ReadPropertyBoolean('Standbild') || $Sekunden <= 0) {
             $this->SetTimerInterval('Standbild', 0);
             return;
@@ -730,7 +803,9 @@ class EZVIZKamera extends IPSModuleStrict
             'ptz'        => (bool) @$this->GetIDForIdent('Schwenken'),
             'akku'       => @$this->GetIDForIdent('Akku') ? (int) $Wert('Akku', 0) : null,
             'akkuSchwach'=> (bool) $Wert('AkkuSchwach', false),
-            'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit')
+            'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit'),
+            'bildArt'    => 'Standbild',
+            'fehler'     => $this->ReadAttributeString('StandbildFehler')
         ];
         if ($MitBild) {
             $K['bild'] = '';
@@ -742,6 +817,7 @@ class EZVIZKamera extends IPSModuleStrict
                         $K['bild'] = $Inhalt;
                         if ($Ident === 'Alarmbild') {
                             $K['bildZeit'] = $K['alarm'];
+                            $K['bildArt'] = 'Alarmbild';
                         }
                         break;
                     }

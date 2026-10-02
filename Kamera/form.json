@@ -39,6 +39,11 @@
                     "minimum": 0
                 },
                 {
+                    "type": "CheckBox",
+                    "name": "StandbildAkku",
+                    "caption": "Auch bei Akku-Kameras regelmäßig aktualisieren (leert den Akku schneller)"
+                },
+                {
                     "type": "Select",
                     "name": "StandbildQuelle",
                     "caption": "Quelle",
@@ -66,7 +71,7 @@
                 },
                 {
                     "type": "Label",
-                    "caption": "Das Standbild wird im Hintergrund geholt und liegt dann fertig vor – Kachel und Medienobjekt zeigen es sofort an. Bei einem neuen Alarm und beim Schwenken wird es gleich erneuert. Im Schlafmodus wird kein Standbild geholt."
+                    "caption": "Das Standbild wird im Hintergrund geholt und liegt dann fertig vor – Kachel und Medienobjekt zeigen es sofort an. Bei einem neuen Alarm und beim Schwenken wird es gleich erneuert. Im Schlafmodus wird kein Standbild geholt. Akku-Kameras holen das Standbild sonst nur bei Alarm und auf Knopfdruck, und zwar über die Cloud."
                 }
             ]
         },
@@ -213,6 +218,11 @@
         {
             "type": "Label",
             "name": "StreamInfo",
+            "caption": ""
+        },
+        {
+            "type": "Label",
+            "name": "StandbildInfo",
             "caption": ""
         },
         {

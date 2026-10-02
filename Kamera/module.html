@@ -154,6 +154,7 @@
         warnung.textContent = hatAkku ? 'Akku schwach (' + ezviz.akku + ' %) – bitte laden' : '';
         var info = [];
         if (!ezviz.online) info.push('Kamera offline');
+        if (ezviz.fehler) info.push(ezviz.fehler);
         if (ezviz.alarm) info.push('Letzter Alarm: ' + datum(ezviz.alarm) + (ezviz.alarmText ? ' – ' + ezviz.alarmText : ''));
         document.getElementById('info').textContent = info.join(' · ');
         alter();
@@ -170,7 +171,8 @@
         if (!ezviz.bildZeit) { el.style.display = 'none'; return; }
         el.style.display = '';
         var s = Math.max(0, Math.round(Date.now() / 1000 - ezviz.bildZeit));
-        el.textContent = s < 60 ? 'vor ' + s + ' s' : s < 3600 ? 'vor ' + Math.round(s / 60) + ' min' : datum(ezviz.bildZeit);
+        var t = s < 60 ? 'vor ' + s + ' s' : s < 3600 ? 'vor ' + Math.round(s / 60) + ' min' : datum(ezviz.bildZeit);
+        el.textContent = (ezviz.bildArt === 'Alarmbild' ? 'Alarmbild ' : '') + t;
     }
     setInterval(alter, 5000);
 

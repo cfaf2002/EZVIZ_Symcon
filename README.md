@@ -46,6 +46,13 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 6)**
+- Standbild zuverlässiger: zweiter lokaler Versuch, längere Wartezeit (20 s), bei Problemen nur 3 statt 10 Minuten Cloud
+- Grund für ein fehlendes Bild steht in der Kachel und in der Instanz („Standbild: zuletzt … – letzter Versuch …“)
+- Kachel kennzeichnet, wenn statt des Standbilds das Alarmbild gezeigt wird
+- Akku-Kameras holen das Standbild nur noch bei Alarm und auf Knopfdruck (über die Cloud) – regelmäßig nur, wenn ausdrücklich eingeschaltet
+- Große Bilder werden auf 1280 Pixel Breite verkleinert, damit die Kachel sie schneller bekommt
+
 **Version 1.0 (Build 5)**
 - Akku-Kameras: Akkustand in der Kachel (grün/gelb/rot) und Variable „Akku schwach“
 - Meldung an die Visualisierung (Benachrichtigung + Push), wenn der Akku die einstellbare Grenze erreicht – einmalig, erneut erst nach dem Laden
