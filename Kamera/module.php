@@ -220,11 +220,7 @@ class EZVIZKamera extends IPSModuleStrict
                 $Element['caption'] = $Info;
             }
             if (($Element['name'] ?? '') === 'StandbildInfo') {
-                $Zeit = $this->ReadAttributeInteger('StandbildZeit');
-                $Fehler = $this->ReadAttributeString('StandbildFehler');
-                $Weg = $this->ReadAttributeString('StandbildWeg');
-                $Element['caption'] = 'Standbild: ' . ($Zeit > 0 ? 'zuletzt ' . date('d.m. H:i:s', $Zeit) . ($Weg !== '' ? ' (' . $Weg . ')' : '') : 'noch keins')
-                    . ($Fehler !== '' ? ' – letzter Versuch ' . $Fehler : '');
+                $Element['caption'] = $this->StandbildInfoText();
             }
             if (($Element['name'] ?? '') === 'StreamInfo') {
                 $Element['caption'] = $Url !== '' ? 'RTSP: ' . $Url : 'RTSP: IP-Adresse noch unbekannt';
@@ -330,13 +326,15 @@ class EZVIZKamera extends IPSModuleStrict
             return false;
         }
         try {
-            return $this->StandbildHolen();
+            $Ok = $this->StandbildHolen();
         } catch (Throwable $e) {
             $Text = 'Fehler im Modul: ' . $e->getMessage() . ' (Zeile ' . $e->getLine() . ')';
             $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . $Text);
             $this->SendDebug('Standbild', $Text, 0);
-            return false;
+            $Ok = false;
         }
+        $this->StandbildInfoZeigen();
+        return $Ok;
     }
 
     /**
@@ -354,6 +352,23 @@ class EZVIZKamera extends IPSModuleStrict
         }
         $Weg = $this->ReadAttributeString('StandbildWeg');
         return 'Standbild aktualisiert um ' . date('H:i:s', $Zeit) . ($Weg !== '' ? ' (' . $Weg . ')' : '') . '.';
+    }
+
+    private function StandbildInfoText(): string
+    {
+        $Zeit = $this->ReadAttributeInteger('StandbildZeit');
+        $Fehler = $this->ReadAttributeString('StandbildFehler');
+        $Weg = $this->ReadAttributeString('StandbildWeg');
+        return 'Standbild: ' . ($Zeit > 0 ? 'zuletzt ' . date('d.m. H:i:s', $Zeit) . ($Weg !== '' ? ' (' . $Weg . ')' : '') : 'noch keins')
+            . ($Fehler !== '' ? ' – letzter Versuch ' . $Fehler : '');
+    }
+
+    /**
+     * Aktualisiert die Standbild-Zeile in der geöffneten Instanz-Konfiguration.
+     */
+    private function StandbildInfoZeigen(): void
+    {
+        @$this->UpdateFormField('StandbildInfo', 'caption', $this->StandbildInfoText());
     }
 
     private function StandbildHolen(): bool
