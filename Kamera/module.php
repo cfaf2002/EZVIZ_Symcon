@@ -65,7 +65,8 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeString('FFmpegPfad', '');
 
         $this->RegisterTimer('BewegungAus', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "BewegungAus", true);');
-        $this->RegisterTimer('Standbild', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "Standbild", true);');
+        // Eigener Aktionsname, da "Standbild" schon das Medienobjekt heißt
+        $this->RegisterTimer('Standbild', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "StandbildTimer", true);');
     }
 
     /**
@@ -182,6 +183,7 @@ class EZVIZKamera extends IPSModuleStrict
                     $this->SetTimerInterval('Standbild', 1000);
                 }
                 break;
+            case 'StandbildTimer':
             case 'Standbild':
                 $this->StandbildTimer();
                 $this->UpdateSnapshot();

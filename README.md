@@ -46,6 +46,9 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 10)**
+- Fehler behoben: Das automatische Standbild lief nur einmal – der Timer-Aufruf kollidierte mit dem gleichnamigen Medienobjekt „Standbild“
+
 **Version 1.0 (Build 9)**
 - Die Zeile „Standbild: zuletzt …“ in der Instanz aktualisiert sich sofort nach jedem Bild (auch beim automatischen Abruf), ohne die Instanz neu zu öffnen
 
