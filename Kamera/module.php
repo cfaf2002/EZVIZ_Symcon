@@ -103,6 +103,17 @@ class EZVIZKamera extends IPSModuleStrict
         if (!$this->ReadPropertyBoolean('Standbild')) {
             $this->MedienLoeschen('Standbild');
         }
+        // Bilder, deren Datei fehlt (z. B. nach Neustart mit älterer Version), entfernen –
+        // sie werden mit dem nächsten Bild sauber neu angelegt
+        foreach (['Standbild', 'Alarmbild'] as $Ident) {
+            $ID = @IPS_GetObjectIDByIdent($Ident, $this->InstanceID);
+            if ($ID !== false && IPS_MediaExists($ID) && empty(IPS_GetMedia($ID)['MediaIsAvailable'])) {
+                IPS_DeleteMedia($ID, true);
+                if ($Ident === 'Standbild') {
+                    $this->WriteAttributeInteger('StandbildZeit', 0);
+                }
+            }
+        }
         $this->SetVisualizationType($this->ReadPropertyBoolean('Kachel') ? 1 : 0);
         $this->SetTimerInterval('Standbild', 0);
         $this->SetTimerInterval('StandbildSofort', 0);
@@ -1248,9 +1259,11 @@ class EZVIZKamera extends IPSModuleStrict
             IPS_SetIdent($ID, $Ident);
             IPS_SetName($ID, $Name);
             IPS_SetPosition($ID, $Position);
-            if ($Typ === MEDIATYPE_IMAGE) {
-                IPS_SetMediaCached($ID, true);
-            }
+        }
+        // Bilder nicht nur im Speicher halten, sondern als Datei ablegen – sonst fehlt die Datei
+        // nach einem Neustart von Symcon (rotes Ausrufezeichen am Medienobjekt)
+        if ($Typ === MEDIATYPE_IMAGE && IPS_GetMedia($ID)['MediaIsCached']) {
+            IPS_SetMediaCached($ID, false);
         }
         return $ID;
     }
