@@ -636,7 +636,12 @@ class EZVIZKonto extends IPSModuleStrict
         $Result['Success'] = $Ok;
         if (!$Ok && $Result['Error'] === '') {
             $D = $Result['Data'];
-            $Result['Error'] = 'Code ' . EZVIZ::ApiCode($D) . ' ' . (string) ($D['meta']['message'] ?? $D['resultDes'] ?? '');
+            // EZVIZ antwortet teils auf Chinesisch – nur lateinische Texte übernehmen
+            $Meldung = (string) ($D['meta']['message'] ?? $D['resultDes'] ?? '');
+            if (preg_match('/[^\x{0000}-\x{024F}\x{2000}-\x{206F}]/u', $Meldung)) {
+                $Meldung = '';
+            }
+            $Result['Error'] = trim('Code ' . EZVIZ::ApiCode($D) . ' ' . $Meldung);
         }
         return $Result;
     }

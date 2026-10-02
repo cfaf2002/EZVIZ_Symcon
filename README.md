@@ -47,6 +47,11 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 18)**
+- Keine chinesischen Fehlertexte mehr: Meldungen der EZVIZ-Cloud werden nur noch übernommen, wenn sie lesbar sind
+- Fehlerhinweis in der Kachel verschwindet, sobald ein neueres Bild da ist (spätestens nach 30 Minuten)
+- Kachel behält die richtige Bildart (Standbild/Alarmbild) auch bei Statusupdates
+
 **Version 1.0 (Build 17)**
 - Akku-Kameras: Schläft die Kamera, erscheint statt „Code 2009“ ein verständlicher Hinweis; die Kachel zeigt dann das letzte Alarmbild
 - Fehlt das Alarmbild (z. B. nach Neustart), wird es beim nächsten Abruf automatisch nachgeladen

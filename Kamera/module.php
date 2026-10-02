@@ -64,6 +64,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeString('StandbildFehler', '');
         $this->RegisterAttributeString('StandbildWeg', '');
         $this->RegisterAttributeInteger('LetzterLauf', 0);
+        $this->RegisterAttributeInteger('StandbildFehlerZeit', 0);
         $this->RegisterAttributeString('FFmpegPfad', '');
 
         // Timer rufen öffentliche Funktionen auf (bewährtes Muster, unabhängig von Variablen-Idents)
@@ -351,11 +352,11 @@ class EZVIZKamera extends IPSModuleStrict
     public function UpdateSnapshot(): bool
     {
         if (trim($this->ReadPropertyString('Serial')) === '') {
-            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' Keine Seriennummer');
+            $this->FehlerSetzen(' Keine Seriennummer');
             return false;
         }
         if ($this->Schlaeft()) {
-            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' Kamera im Schlafmodus – kein Bild möglich');
+            $this->FehlerSetzen(' Kamera im Schlafmodus – kein Bild möglich');
             $this->SendDebug('Standbild', 'Kamera im Schlafmodus – übersprungen', 0);
             return false;
         }
@@ -363,7 +364,7 @@ class EZVIZKamera extends IPSModuleStrict
             $Ok = $this->StandbildHolen();
         } catch (Throwable $e) {
             $Text = 'Fehler im Modul: ' . $e->getMessage() . ' (Zeile ' . $e->getLine() . ')';
-            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . $Text);
+            $this->FehlerSetzen(' ' . $Text);
             $this->SendDebug('Standbild', $Text, 0);
             $Ok = false;
         }
@@ -495,7 +496,7 @@ class EZVIZKamera extends IPSModuleStrict
         }
         if ($Bild === null) {
             $Text = 'Kein neues Bild: ' . implode(' / ', array_unique($Fehler));
-            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . $Text);
+            $this->FehlerSetzen(' ' . $Text);
             $this->SendDebug('Standbild', $Text, 0);
             $this->KachelSenden();
             return false;
@@ -537,6 +538,12 @@ class EZVIZKamera extends IPSModuleStrict
         imagejpeg($Ziel, null, 80);
         $Neu = (string) ob_get_clean();
         return ($Neu !== '' && strlen($Neu) < strlen($Bild)) ? $Neu : $Bild;
+    }
+
+    private function FehlerSetzen(string $Text): void
+    {
+        $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . trim($Text));
+        $this->WriteAttributeInteger('StandbildFehlerZeit', time());
     }
 
     private function HatAkku(): bool
@@ -1042,29 +1049,40 @@ class EZVIZKamera extends IPSModuleStrict
             'akkuSchwach'=> (bool) $Wert('AkkuSchwach', false),
             'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit'),
             'bildArt'    => 'Standbild',
-            'fehler'     => $this->ReadAttributeString('StandbildFehler'),
+            'fehler'     => '',
             'intervall'  => (int) ($this->AutoIntervall()[0] / 1000)
         ];
+        // Das neuere Bild wählen (Standbild oder Alarmbild) – Zeit und Art immer mitschicken,
+        // den Bildinhalt nur bei Bedarf
+        $Kandidaten = [
+            'Standbild' => $this->ReadAttributeInteger('StandbildZeit'),
+            'Alarmbild' => $K['alarm']
+        ];
+        arsort($Kandidaten);
         if ($MitBild) {
-            // Das neuere Bild zeigen: Standbild oder Alarmbild
             $K['bild'] = '';
-            $Kandidaten = [
-                'Standbild' => $this->ReadAttributeInteger('StandbildZeit'),
-                'Alarmbild' => $K['alarm']
-            ];
-            arsort($Kandidaten);
-            foreach ($Kandidaten as $Ident => $Zeit) {
-                $ID = @IPS_GetObjectIDByIdent($Ident, $this->InstanceID);
-                if ($ID !== false && IPS_MediaExists($ID)) {
-                    $Inhalt = (string) @IPS_GetMediaContent($ID);
-                    if ($Inhalt !== '') {
-                        $K['bild'] = $Inhalt;
-                        $K['bildZeit'] = $Zeit;
-                        $K['bildArt'] = $Ident;
-                        break;
-                    }
-                }
+        }
+        foreach ($Kandidaten as $Ident => $Zeit) {
+            $ID = @IPS_GetObjectIDByIdent($Ident, $this->InstanceID);
+            if ($ID === false || !IPS_MediaExists($ID) || empty(IPS_GetMedia($ID)['MediaIsAvailable'])) {
+                continue;
             }
+            if ($MitBild) {
+                $Inhalt = (string) @IPS_GetMediaContent($ID);
+                if ($Inhalt === '') {
+                    continue;
+                }
+                $K['bild'] = $Inhalt;
+            }
+            $K['bildZeit'] = $Zeit;
+            $K['bildArt'] = $Ident;
+            break;
+        }
+        // Fehlerhinweis nur, solange er aktuell ist (neuer als das gezeigte Bild, höchstens 30 Minuten alt)
+        $K['fehler'] = '';
+        $FehlerZeit = $this->ReadAttributeInteger('StandbildFehlerZeit');
+        if ($FehlerZeit > (int) $K['bildZeit'] && $FehlerZeit > time() - 1800) {
+            $K['fehler'] = $this->ReadAttributeString('StandbildFehler');
         }
         return $K;
     }
