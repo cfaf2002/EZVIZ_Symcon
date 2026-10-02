@@ -1,0 +1,12 @@
+{
+    "id": "{59CF9614-CA0E-4BE0-AE19-A4ACB2634FEF}",
+    "name": "EZVIZ",
+    "author": "Armin Frohwerk",
+    "url": "https://github.com/cfaf2002/EZVIZ_Symcon",
+    "compatibility": {
+        "version": "8.1"
+    },
+    "version": "1.0",
+    "build": 4,
+    "date": 1790875023
+}

@@ -1,0 +1,226 @@
+{
+    "elements": [
+        {
+            "type": "ValidationTextBox",
+            "name": "Serial",
+            "caption": "Seriennummer",
+            "width": "250px"
+        },
+        {
+            "type": "PasswordTextBox",
+            "name": "Verifizierungscode",
+            "caption": "Verifizierungscode der Kamera",
+            "width": "250px"
+        },
+        {
+            "type": "Label",
+            "caption": "Der Verifizierungscode (6 Großbuchstaben) steht auf dem Aufkleber der Kamera. Er ist das RTSP-Passwort und entschlüsselt die Alarmbilder."
+        },
+        {
+            "type": "CheckBox",
+            "name": "Kachel",
+            "caption": "Eigene Kachel verwenden (Standbild, Status, Schwenken)"
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Standbild (sofort sichtbar)",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "Standbild",
+                    "caption": "Standbild regelmäßig aktualisieren"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "StandbildIntervall",
+                    "caption": "Standbild aktualisieren alle",
+                    "suffix": "Sekunden (0 = nur bei Alarm/auf Knopfdruck, min. 10)",
+                    "minimum": 0
+                },
+                {
+                    "type": "Select",
+                    "name": "StandbildQuelle",
+                    "caption": "Quelle",
+                    "width": "350px",
+                    "options": [
+                        {
+                            "caption": "Automatisch (lokal per FFmpeg, sonst Cloud)",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Cloud (Kamera macht ein Foto)",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Nur lokal per FFmpeg",
+                            "value": 2
+                        }
+                    ]
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "FFmpeg",
+                    "caption": "Pfad zu FFmpeg (leer = automatisch suchen)",
+                    "width": "350px"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Das Standbild wird im Hintergrund geholt und liegt dann fertig vor – Kachel und Medienobjekt zeigen es sofort an. Bei einem neuen Alarm und beim Schwenken wird es gleich erneuert. Im Schlafmodus wird kein Standbild geholt."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Livestream (lokal per RTSP)",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "Livestream",
+                    "caption": "Livestream als Medienobjekt anlegen"
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "Benutzer",
+                    "caption": "Benutzer",
+                    "width": "250px"
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "IP",
+                    "caption": "IP-Adresse (leer = automatisch aus der Cloud)",
+                    "width": "250px"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "Port",
+                    "caption": "RTSP-Port",
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                {
+                    "type": "Select",
+                    "name": "Stream",
+                    "caption": "Stream",
+                    "width": "350px",
+                    "options": [
+                        {
+                            "caption": "Unterstream – lädt schnell (empfohlen)",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Hauptstream – volle Auflösung, lädt langsamer",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Standard (/H.264)",
+                            "value": 2
+                        },
+                        {
+                            "caption": "Eigener Pfad",
+                            "value": 3
+                        }
+                    ]
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "Pfad",
+                    "caption": "Eigener Pfad (nur bei „Eigener Pfad“)",
+                    "width": "350px"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Der Unterstream hat eine geringere Auflösung und startet deutlich schneller. Andere Pfade z. B. /live1.sdp unter „Eigener Pfad“."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Alarme",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "Alarmbild",
+                    "caption": "Bild des letzten Alarms laden"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "Bewegungsdauer",
+                    "caption": "„Bewegung erkannt“ zurücksetzen nach",
+                    "suffix": "Sekunden",
+                    "minimum": 10
+                },
+                {
+                    "type": "Label",
+                    "caption": "Neue Alarme kommen mit dem Abfrageintervall des Kontos (Standard 60 Sekunden)."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Schwenken",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "NumberSpinner",
+                    "name": "Schwenkdauer",
+                    "caption": "Dauer je Schwenkschritt",
+                    "suffix": "Millisekunden",
+                    "minimum": 100,
+                    "maximum": 5000
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "Label",
+            "name": "Geraeteinfo",
+            "caption": ""
+        },
+        {
+            "type": "Label",
+            "name": "StreamInfo",
+            "caption": ""
+        },
+        {
+            "type": "Button",
+            "caption": "Jetzt aktualisieren",
+            "onClick": "echo EZVIZ_Update($id) ? 'Abfrage gestartet.' : 'Konto nicht verbunden.';"
+        },
+        {
+            "type": "Button",
+            "caption": "Standbild jetzt holen",
+            "onClick": "echo EZVIZ_UpdateSnapshot($id) ? 'Standbild aktualisiert.' : 'Kein Standbild – Details im Debug.';"
+        },
+        {
+            "type": "Button",
+            "caption": "Stream-Adresse anzeigen",
+            "onClick": "$u = EZVIZ_GetStreamUrl($id); echo $u !== '' ? $u : 'IP-Adresse noch unbekannt.';"
+        }
+    ],
+    "status": [
+        {
+            "code": 102,
+            "icon": "active",
+            "caption": "Verbunden"
+        },
+        {
+            "code": 204,
+            "icon": "error",
+            "caption": "Konto nicht verbunden"
+        },
+        {
+            "code": 205,
+            "icon": "inactive",
+            "caption": "Bitte die Seriennummer eintragen (oder Kamera über den Konfigurator anlegen)"
+        },
+        {
+            "code": 207,
+            "icon": "error",
+            "caption": "Kamera nicht im EZVIZ-Konto gefunden"
+        }
+    ]
+}

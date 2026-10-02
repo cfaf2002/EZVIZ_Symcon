@@ -1,0 +1,46 @@
+{
+    "elements": [],
+    "actions": [
+        {
+            "type": "Label",
+            "caption": "",
+            "visible": false
+        },
+        {
+            "type": "Configurator",
+            "name": "Geraete",
+            "caption": "Geräte im EZVIZ-Konto",
+            "rowCount": 10,
+            "add": false,
+            "delete": true,
+            "sort": {
+                "column": "name",
+                "direction": "ascending"
+            },
+            "columns": [
+                {
+                    "caption": "Name",
+                    "name": "name",
+                    "width": "auto"
+                },
+                {
+                    "caption": "Modell",
+                    "name": "model",
+                    "width": "200px"
+                },
+                {
+                    "caption": "Seriennummer",
+                    "name": "serial",
+                    "width": "140px"
+                },
+                {
+                    "caption": "Status",
+                    "name": "state",
+                    "width": "120px"
+                }
+            ],
+            "values": []
+        }
+    ],
+    "status": []
+}

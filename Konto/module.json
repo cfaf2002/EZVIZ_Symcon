@@ -1,0 +1,18 @@
+{
+    "id": "{7FD1051B-31F1-4C81-92B4-39D96ED1D346}",
+    "name": "EZVIZ Konto",
+    "type": 1,
+    "vendor": "EZVIZ",
+    "aliases": [
+        "EZVIZ Konto"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [
+        "{5893EB57-6525-408A-BED7-FA6BD08A13F0}"
+    ],
+    "implemented": [
+        "{7E4D686F-4989-4A13-AAF9-F94DECFFE88F}"
+    ],
+    "prefix": "EZVIZ",
+    "url": "https://github.com/cfaf2002/EZVIZ_Symcon/blob/main/Konto/README.md"
+}

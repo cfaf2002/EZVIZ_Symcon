@@ -1,0 +1,166 @@
+<style>
+    .ezviz {
+        --ez-akzent: #2f8fd8;
+        --ez-alarm: #e5574f;
+        --ez-gruen: #3cb371;
+        --ez-text: #f2f2f2;
+        --ez-leise: rgba(255, 255, 255, 0.62);
+        --ez-flaeche: rgba(255, 255, 255, 0.08);
+        --ez-flaeche-hover: rgba(255, 255, 255, 0.14);
+        --ez-rand: rgba(255, 255, 255, 0.18);
+        color: var(--ez-text);
+    }
+    .ezviz.hell {
+        --ez-text: #1d1d1f;
+        --ez-leise: rgba(0, 0, 0, 0.55);
+        --ez-flaeche: rgba(0, 0, 0, 0.05);
+        --ez-flaeche-hover: rgba(0, 0, 0, 0.09);
+        --ez-rand: rgba(0, 0, 0, 0.15);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: transparent; color: inherit; }
+    body, button { font-family: "Segoe UI", Roboto, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+    .ezviz { display: flex; flex-direction: column; gap: 10px; padding: 44px 4px 6px; height: 100%; font-size: 14px; }
+    .bild { position: relative; flex: 1; min-height: 120px; border-radius: 12px; overflow: hidden; background: #111; }
+    .bild img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
+    .bild img.da { display: block; }
+    .leer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.6); text-align: center; padding: 12px; }
+    .oben { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none; }
+    .marke { background: rgba(0, 0, 0, 0.55); color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 12px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .marke .punkt { width: 8px; height: 8px; border-radius: 50%; background: var(--ez-gruen); }
+    .marke.aus .punkt { background: #999; }
+    .marke.alarm { background: var(--ez-alarm); display: none; }
+    .marke.alarm.an { display: flex; }
+    .zeit { margin-left: auto; }
+    .pfeil { position: absolute; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 18px; cursor: pointer; display: none; align-items: center; justify-content: center; }
+    .pfeil:hover { background: rgba(0, 0, 0, 0.65); }
+    .pfeil:active { transform: scale(0.92); }
+    .ptz .pfeil { display: flex; }
+    .pfeil.links { left: 8px; top: 50%; margin-top: -20px; }
+    .pfeil.rechts { right: 8px; top: 50%; margin-top: -20px; }
+    .pfeil.hoch { top: 40px; left: 50%; margin-left: -20px; }
+    .pfeil.runter { bottom: 8px; left: 50%; margin-left: -20px; }
+    .laedt { position: absolute; right: 10px; bottom: 10px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: dreh 0.8s linear infinite; display: none; }
+    .laedt.an { display: block; }
+    @keyframes dreh { to { transform: rotate(360deg); } }
+    .knoepfe { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .knopf { border: 1px solid var(--ez-rand); background: var(--ez-flaeche); color: inherit; border-radius: 10px; height: 38px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
+    .knopf:hover { background: var(--ez-flaeche-hover); }
+    .knopf:active { transform: scale(0.97); }
+    .knopf.an { background: var(--ez-akzent); border-color: transparent; color: #fff; }
+    .knopf[hidden] { display: none; }
+    .info { font-size: 12px; color: var(--ez-leise); min-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+
+<div class="ezviz" lang="de">
+    <div class="bild" id="bild">
+        <img id="foto" alt="">
+        <div class="leer" id="leer">Noch kein Bild – „Bild“ antippen</div>
+        <div class="oben">
+            <span class="marke" id="status"><span class="punkt"></span><span id="name"></span></span>
+            <span class="marke alarm" id="bewegung">Bewegung</span>
+            <span class="marke zeit" id="zeit"></span>
+        </div>
+        <button class="pfeil hoch" onclick="schwenken('up')" title="Hoch">▲</button>
+        <button class="pfeil links" onclick="schwenken('left')" title="Links">◀</button>
+        <button class="pfeil rechts" onclick="schwenken('right')" title="Rechts">▶</button>
+        <button class="pfeil runter" onclick="schwenken('down')" title="Runter">▼</button>
+        <div class="laedt" id="laedt"></div>
+    </div>
+    <div class="info" id="info"></div>
+    <div class="knoepfe">
+        <button class="knopf" onclick="aktion('bild')">⟳ Bild</button>
+        <button class="knopf" id="schutz" onclick="aktion('schutz')">Erkennung</button>
+        <button class="knopf" id="schlaf" onclick="aktion('schlaf')">Schlafmodus</button>
+    </div>
+</div>
+
+<script>
+    var ezviz = {};
+
+    // Hell/Dunkel anhand des Hintergrunds der Symcon-Kachel erkennen
+    (function () {
+        function hell(farbe) {
+            var m = (farbe || '').match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+            if (!m || (m[4] !== undefined && parseFloat(m[4]) < 0.3)) return null;
+            return (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) > 150;
+        }
+        var ergebnis = null;
+        try {
+            var el = window.frameElement;
+            while (el && ergebnis === null) {
+                ergebnis = hell(window.parent.getComputedStyle(el).backgroundColor);
+                el = el.parentElement;
+            }
+        } catch (e) { }
+        if (ergebnis === null) ergebnis = hell(getComputedStyle(document.body).backgroundColor);
+        if (ergebnis) document.querySelector('.ezviz').classList.add('hell');
+    })();
+
+    function handleMessage(data) {
+        var d;
+        try { d = typeof data === 'string' ? JSON.parse(data) : data; } catch (e) { return; }
+        if (!d) return;
+        // Ohne "bild" bleibt das bisherige Bild stehen
+        for (var k in d) ezviz[k] = d[k];
+        if (d.bild !== undefined) {
+            var img = document.getElementById('foto');
+            if (d.bild) {
+                img.src = 'data:image/jpeg;base64,' + d.bild;
+                img.classList.add('da');
+                document.getElementById('leer').style.display = 'none';
+            }
+            document.getElementById('laedt').classList.remove('an');
+        }
+        zeichnen();
+    }
+
+    function zeichnen() {
+        document.getElementById('name').textContent = ezviz.name || '';
+        document.getElementById('status').classList.toggle('aus', !ezviz.online);
+        document.getElementById('bewegung').classList.toggle('an', !!ezviz.bewegung);
+        document.getElementById('bild').classList.toggle('ptz', !!ezviz.ptz && !ezviz.schlaf);
+        document.getElementById('schutz').classList.toggle('an', !!ezviz.schutz);
+        var schlaf = document.getElementById('schlaf');
+        schlaf.hidden = !ezviz.hatSchlaf;
+        schlaf.classList.toggle('an', !!ezviz.schlaf);
+        if (ezviz.schlaf && !ezviz.bild) {
+            document.getElementById('leer').textContent = 'Kamera im Schlafmodus';
+        }
+        var info = [];
+        if (!ezviz.online) info.push('Kamera offline');
+        if (ezviz.alarm) info.push('Letzter Alarm: ' + datum(ezviz.alarm) + (ezviz.alarmText ? ' – ' + ezviz.alarmText : ''));
+        document.getElementById('info').textContent = info.join(' · ');
+        alter();
+    }
+
+    function datum(t) {
+        var d = new Date(t * 1000), h = new Date();
+        var zeit = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        return d.toDateString() === h.toDateString() ? zeit : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + zeit;
+    }
+
+    function alter() {
+        var el = document.getElementById('zeit');
+        if (!ezviz.bildZeit) { el.style.display = 'none'; return; }
+        el.style.display = '';
+        var s = Math.max(0, Math.round(Date.now() / 1000 - ezviz.bildZeit));
+        el.textContent = s < 60 ? 'vor ' + s + ' s' : s < 3600 ? 'vor ' + Math.round(s / 60) + ' min' : datum(ezviz.bildZeit);
+    }
+    setInterval(alter, 5000);
+
+    function aktion(name, extra) {
+        var a = { aktion: name };
+        for (var k in (extra || {})) a[k] = extra[k];
+        if (name === 'bild' || name === 'schwenken') {
+            var l = document.getElementById('laedt');
+            l.classList.add('an');
+            setTimeout(function () { l.classList.remove('an'); }, 20000);
+        }
+        requestAction('Kachel', JSON.stringify(a));
+    }
+
+    function schwenken(richtung) {
+        aktion('schwenken', { richtung: richtung });
+    }
+</script>

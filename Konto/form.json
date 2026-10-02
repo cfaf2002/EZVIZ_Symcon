@@ -1,0 +1,136 @@
+{
+    "elements": [
+        {
+            "type": "ExpansionPanel",
+            "caption": "Nutzungshinweis",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "Label",
+                    "caption": "Dieses Modul nutzt die nicht offiziell dokumentierte Schnittstelle der EZVIZ-App. Es steht in keiner Verbindung zu EZVIZ bzw. Hikvision und ist nur für die private Nutzung gedacht."
+                },
+                {
+                    "type": "Label",
+                    "caption": "EZVIZ kann die Schnittstelle jederzeit ändern – dann funktioniert das Modul ggf. nicht mehr. Die Nutzung erfolgt auf eigene Verantwortung."
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "HinweisBestaetigt",
+                    "caption": "Ich habe den Hinweis gelesen und bin einverstanden"
+                }
+            ]
+        },
+        {
+            "type": "CheckBox",
+            "name": "Aktiv",
+            "caption": "Instanz aktiv"
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "EZVIZ-Zugang",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "ValidationTextBox",
+                    "name": "EMail",
+                    "caption": "E-Mail / Benutzername",
+                    "width": "350px"
+                },
+                {
+                    "type": "PasswordTextBox",
+                    "name": "Passwort",
+                    "caption": "Passwort",
+                    "width": "350px"
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "Code",
+                    "caption": "Bestätigungscode (nur bei Aufforderung)",
+                    "width": "350px"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Ist die Zwei-Faktor-Anmeldung aktiv, schickt EZVIZ beim ersten Anmelden einen Code per E-Mail/SMS. Code hier eintragen und übernehmen – danach bleibt die Sitzung bestehen."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Abfrage",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "NumberSpinner",
+                    "name": "Intervall",
+                    "caption": "Geräte und Alarme abfragen alle",
+                    "suffix": "Sekunden (0 = aus, min. 15)",
+                    "minimum": 0
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "Server",
+                    "caption": "Server",
+                    "width": "350px"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Standard ist apiieu.ezvizlife.com (Europa). Gehört das Konto zu einer anderen Region, stellt das Modul automatisch um."
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "Label",
+            "name": "Kontoinfo",
+            "caption": "Nicht angemeldet"
+        },
+        {
+            "type": "Button",
+            "caption": "Verbindung testen",
+            "onClick": "echo EZVIZ_Login($id) ? 'Anmeldung erfolgreich.' : 'Anmeldung fehlgeschlagen. Details im Meldungsfenster.';"
+        },
+        {
+            "type": "Button",
+            "caption": "Jetzt abfragen",
+            "onClick": "echo EZVIZ_RefreshAll($id) ? count(EZVIZ_GetDevices($id)) . ' Geräte abgefragt.' : 'Abfrage fehlgeschlagen. Details im Debug.';"
+        }
+    ],
+    "status": [
+        {
+            "code": 102,
+            "icon": "active",
+            "caption": "Verbunden"
+        },
+        {
+            "code": 104,
+            "icon": "inactive",
+            "caption": "Instanz ist deaktiviert"
+        },
+        {
+            "code": 201,
+            "icon": "inactive",
+            "caption": "Bitte den Nutzungshinweis bestätigen"
+        },
+        {
+            "code": 202,
+            "icon": "inactive",
+            "caption": "Bitte E-Mail und Passwort eintragen"
+        },
+        {
+            "code": 203,
+            "icon": "error",
+            "caption": "Anmeldung fehlgeschlagen – Details im Meldungsfenster"
+        },
+        {
+            "code": 204,
+            "icon": "error",
+            "caption": "EZVIZ-Server nicht erreichbar – neuer Versuch beim nächsten Abruf"
+        },
+        {
+            "code": 206,
+            "icon": "inactive",
+            "caption": "Bestätigungscode wurde angefordert – bitte eintragen und übernehmen"
+        }
+    ]
+}

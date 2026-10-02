@@ -1,0 +1,18 @@
+{
+    "id": "{D256E72C-D0FF-4536-97B6-FB6929356BA4}",
+    "name": "EZVIZ Konfigurator",
+    "type": 4,
+    "vendor": "EZVIZ",
+    "aliases": [
+        "EZVIZ Konfigurator"
+    ],
+    "parentRequirements": [
+        "{7E4D686F-4989-4A13-AAF9-F94DECFFE88F}"
+    ],
+    "childRequirements": [],
+    "implemented": [
+        "{5893EB57-6525-408A-BED7-FA6BD08A13F0}"
+    ],
+    "prefix": "EZVIZ",
+    "url": "https://github.com/cfaf2002/EZVIZ_Symcon/blob/main/Konfigurator/README.md"
+}

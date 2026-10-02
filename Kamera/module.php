@@ -1,0 +1,947 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../libs/EZVIZ.php';
+
+/**
+ * EZVIZ Kamera
+ * Eine EZVIZ-Kamera als Instanz: Status und Schalter über die EZVIZ-Cloud,
+ * Livestream lokal per RTSP, letzter Alarm samt Bild.
+ *
+ * Autor: Armin Frohwerk
+ */
+class EZVIZKamera extends IPSModuleStrict
+{
+    private const RICHTUNGEN = [
+        1 => ['LEFT', 'Links', 'arrow-left'],
+        2 => ['RIGHT', 'Rechts', 'arrow-right'],
+        3 => ['UP', 'Hoch', 'arrow-up'],
+        4 => ['DOWN', 'Runter', 'arrow-down']
+    ];
+
+    // Stream-Auswahl: 0 Unterstream, 1 Hauptstream, 2 Standard, 3 eigener Pfad
+    private const STREAMS = [
+        0 => '/h264/ch1/sub/av_stream',
+        1 => '/h264/ch1/main/av_stream',
+        2 => '/H.264',
+        3 => ''
+    ];
+
+    public function Create(): void
+    {
+        parent::Create();
+
+        $this->RegisterPropertyString('Serial', '');
+        $this->RegisterPropertyString('Verifizierungscode', '');
+        $this->RegisterPropertyBoolean('Livestream', true);
+        $this->RegisterPropertyString('Benutzer', 'admin');
+        $this->RegisterPropertyString('IP', '');
+        $this->RegisterPropertyInteger('Port', 554);
+        $this->RegisterPropertyInteger('Stream', 0);
+        $this->RegisterPropertyString('Pfad', '/H.264');
+        $this->RegisterPropertyBoolean('Standbild', true);
+        $this->RegisterPropertyInteger('StandbildQuelle', 0);
+        $this->RegisterPropertyInteger('StandbildIntervall', 30);
+        $this->RegisterPropertyString('FFmpeg', '');
+        $this->RegisterPropertyBoolean('Kachel', true);
+        $this->RegisterPropertyBoolean('Alarmbild', true);
+        $this->RegisterPropertyInteger('Bewegungsdauer', 60);
+        $this->RegisterPropertyInteger('Schwenkdauer', 500);
+
+        $this->RegisterAttributeString('Daten', '');
+        $this->RegisterAttributeString('AlarmId', '');
+        $this->RegisterAttributeString('LokaleIP', '');
+        $this->RegisterAttributeInteger('ParentID', 0);
+        $this->RegisterAttributeInteger('StandbildZeit', 0);
+        $this->RegisterAttributeInteger('LokalPause', 0);
+        $this->RegisterAttributeString('FFmpegPfad', '');
+
+        $this->RegisterTimer('BewegungAus', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "BewegungAus", true);');
+        $this->RegisterTimer('Standbild', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "Standbild", true);');
+    }
+
+    /**
+     * Übergeordnete Instanz: EZVIZ Konto
+     */
+    public function GetCompatibleParents(): string
+    {
+        return json_encode([
+            'type'      => 'connect',
+            'moduleIDs' => [EZVIZ::MODUL_KONTO]
+        ]);
+    }
+
+    public function ApplyChanges(): void
+    {
+        parent::ApplyChanges();
+
+        $Serial = trim($this->ReadPropertyString('Serial'));
+        $this->SetReceiveDataFilter($Serial !== '' ? '.*"Serial":"' . preg_quote($Serial, '/') . '".*' : '.*"Serial":"-".*');
+
+        $this->GrundvariablenAnlegen();
+
+        if (!$this->ReadPropertyBoolean('Alarmbild')) {
+            $this->MedienLoeschen('Alarmbild');
+        }
+        if (!$this->ReadPropertyBoolean('Livestream')) {
+            $this->MedienLoeschen('Livestream');
+        }
+        if (!$this->ReadPropertyBoolean('Standbild')) {
+            $this->MedienLoeschen('Standbild');
+        }
+        $this->SetVisualizationType($this->ReadPropertyBoolean('Kachel') ? 1 : 0);
+        $this->SetTimerInterval('Standbild', 0);
+        $this->WriteAttributeInteger('LokalPause', 0);
+        $this->WriteAttributeString('FFmpegPfad', '');
+
+        if (IPS_GetKernelRunlevel() != KR_READY) {
+            $this->RegisterMessage(0, IPS_KERNELSTARTED);
+            return;
+        }
+
+        $this->RegisterMessage($this->InstanceID, FM_CONNECT);
+        $this->RegisterMessage($this->InstanceID, FM_DISCONNECT);
+        $this->ParentBeobachten();
+
+        if ($Serial === '') {
+            $this->SetStatus(EZVIZ::STATUS_KEINE_SERIENNUMMER);
+            return;
+        }
+
+        // Zuletzt bekannte Daten sofort anwenden (z. B. geänderter RTSP-Pfad), dann beim Konto nachfragen
+        $Alt = json_decode($this->ReadAttributeString('Daten'), true);
+        if (is_array($Alt)) {
+            $this->Verarbeiten($Alt, false);
+        }
+        $this->Start();
+
+        // Standbild: gleich ein frisches holen, danach im Intervall
+        if ($this->ReadPropertyBoolean('Standbild')) {
+            $this->SetTimerInterval('Standbild', 2000);
+        }
+    }
+
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
+    {
+        switch ($Message) {
+            case IPS_KERNELSTARTED:
+                $this->UnregisterMessage(0, IPS_KERNELSTARTED);
+                $this->ApplyChanges();
+                break;
+            case FM_CONNECT:
+            case FM_DISCONNECT:
+                $this->ParentBeobachten();
+                $this->Start();
+                break;
+            case IM_CHANGESTATUS:
+                if ($SenderID == $this->ReadAttributeInteger('ParentID')) {
+                    $this->Start();
+                }
+                break;
+        }
+    }
+
+    public function ReceiveData(string $JSONString): string
+    {
+        $Data = json_decode($JSONString, true);
+        if (!is_array($Data) || ($Data['Serial'] ?? '') !== trim($this->ReadPropertyString('Serial'))) {
+            return '';
+        }
+        if (($Data['Typ'] ?? '') === 'Status' && is_array($Data['Daten'] ?? null)) {
+            $this->Verarbeiten($Data['Daten'], true);
+        }
+        return '';
+    }
+
+    public function RequestAction(string $Ident, mixed $Value): void
+    {
+        if (strpos($Ident, 'Schalter') === 0) {
+            $this->SetSwitch((int) substr($Ident, 8), (bool) $Value);
+            return;
+        }
+        switch ($Ident) {
+            case 'Bewegungserkennung':
+                $this->SetMotionDetection((bool) $Value);
+                break;
+            case 'Schwenken':
+                if (isset(self::RICHTUNGEN[(int) $Value])) {
+                    $this->Move(strtolower(self::RICHTUNGEN[(int) $Value][0]));
+                }
+                break;
+            case 'Aktualisieren':
+                $this->Update();
+                if ($this->ReadPropertyBoolean('Standbild')) {
+                    $this->SetTimerInterval('Standbild', 1000);
+                }
+                break;
+            case 'Standbild':
+                $this->StandbildTimer();
+                $this->UpdateSnapshot();
+                break;
+            case 'Kachel':
+                $this->KachelAktion((string) $Value);
+                break;
+            case 'BewegungAus':
+                $this->SetTimerInterval('BewegungAus', 0);
+                $this->Setzen('Bewegung', false);
+                $this->KachelSenden();
+                break;
+            default:
+                throw new Exception('Ungültiger Ident: ' . $Ident);
+        }
+    }
+
+    public function GetConfigurationForm(): string
+    {
+        $Form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
+
+        $Daten = json_decode($this->ReadAttributeString('Daten'), true);
+        $Info = 'Noch keine Daten vom Konto';
+        if (is_array($Daten)) {
+            $I = $Daten['deviceInfos'] ?? [];
+            $Info = trim((string) ($I['name'] ?? '') . ' – ' . (string) ($I['deviceType'] ?? '') . ' – Firmware ' . (string) ($I['version'] ?? '?'));
+            $IP = $this->IPAdresse();
+            if ($IP !== '') {
+                $Info .= ' – IP ' . $IP;
+            }
+        }
+        $Url = $this->StreamUrl(true);
+
+        foreach ($Form['actions'] as &$Element) {
+            if (($Element['name'] ?? '') === 'Geraeteinfo') {
+                $Element['caption'] = $Info;
+            }
+            if (($Element['name'] ?? '') === 'StreamInfo') {
+                $Element['caption'] = $Url !== '' ? 'RTSP: ' . $Url : 'RTSP: IP-Adresse noch unbekannt';
+            }
+        }
+        return json_encode($Form);
+    }
+
+    // ------------------------------------------------------------------
+    // Öffentliche Funktionen (EZVIZ_...)
+    // ------------------------------------------------------------------
+
+    /**
+     * Lässt das Konto alle Geräte sofort neu abfragen.
+     */
+    public function Update(): bool
+    {
+        if (!$this->HasActiveParent()) {
+            $this->SetStatus(EZVIZ::STATUS_KEINE_VERBINDUNG);
+            return false;
+        }
+        return EZVIZ::Response(@$this->SendDataToParent(EZVIZ::Request('Aktualisieren')))['Success'];
+    }
+
+    /**
+     * Bewegungserkennung (Alarm-Benachrichtigung) ein- oder ausschalten.
+     */
+    public function SetMotionDetection(bool $Aktiv): bool
+    {
+        $Result = $this->Senden('PUT', EZVIZ::GERAETE . $this->Serial() . '/1/changeDefenceStatusReq', [
+            'type'   => 'Global',
+            'status' => $Aktiv ? 1 : 0,
+            'actor'  => 'V'
+        ]);
+        if (!$Result['Success']) {
+            $this->Fehler('Bewegungserkennung', $Result);
+            return false;
+        }
+        $this->Setzen('Bewegungserkennung', $Aktiv);
+        return true;
+    }
+
+    /**
+     * Einen Kamera-Schalter setzen, z. B. 21 = Schlafmodus, 3 = Statusleuchte, 10 = Nachtsicht.
+     */
+    public function SetSwitch(int $Typ, bool $Aktiv): bool
+    {
+        $Serial = $this->Serial();
+        $Result = $this->Senden('PUT', EZVIZ::GERAETE . $Serial . '/0/' . ($Aktiv ? 1 : 0) . '/' . $Typ . '/switchStatus');
+        if (!$Result['Success']) {
+            // Ältere Firmware
+            $Result = $this->Senden('POST', EZVIZ::SCHALTER_ALT, [
+                'serial'  => $Serial,
+                'enable'  => $Aktiv ? '1' : '0',
+                'type'    => (string) $Typ,
+                'channel' => '0'
+            ]);
+        }
+        if (!$Result['Success']) {
+            $this->Fehler('Schalter ' . $Typ, $Result);
+            return false;
+        }
+        $this->Setzen('Schalter' . $Typ, $Aktiv);
+        return true;
+    }
+
+    /**
+     * Kamera schwenken: 'left', 'right', 'up' oder 'down'.
+     */
+    public function Move(string $Richtung): bool
+    {
+        $Richtung = strtoupper($Richtung);
+        if (!in_array($Richtung, ['LEFT', 'RIGHT', 'UP', 'DOWN'], true)) {
+            return false;
+        }
+        $Serial = $this->Serial();
+        $Pfad = EZVIZ::GERAETE . $Serial . '/ptzControl';
+        $Form = ['command' => $Richtung, 'channelNo' => 1, 'speed' => 5, 'serial' => $Serial];
+
+        $Result = $this->Senden('PUT', $Pfad, $Form + ['action' => 'START', 'uuid' => self::Uuid()]);
+        usleep(max(100, min(5000, $this->ReadPropertyInteger('Schwenkdauer'))) * 1000);
+        $this->Senden('PUT', $Pfad, $Form + ['action' => 'STOP', 'uuid' => self::Uuid()]);
+
+        if (!$Result['Success']) {
+            $this->Fehler('Schwenken', $Result);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Holt sofort ein neues Standbild (lokal per FFmpeg oder über die Cloud).
+     */
+    public function UpdateSnapshot(): bool
+    {
+        if (trim($this->ReadPropertyString('Serial')) === '') {
+            return false;
+        }
+        if ($this->Schlaeft()) {
+            $this->SendDebug('Standbild', 'Kamera im Schlafmodus – übersprungen', 0);
+            return false;
+        }
+        $Quelle = $this->ReadPropertyInteger('StandbildQuelle');
+        $Bild = null;
+        // Automatisch: klappt lokal nicht, 10 Minuten lang direkt die Cloud nehmen
+        if ($Quelle === 2 || ($Quelle === 0 && $this->ReadAttributeInteger('LokalPause') < time())) {
+            $Bild = $this->StandbildLokal();
+            if ($Bild === null && $Quelle === 0) {
+                $this->WriteAttributeInteger('LokalPause', time() + 600);
+            }
+        }
+        if ($Bild === null && $Quelle !== 2) {
+            $Bild = $this->StandbildCloud();
+        }
+        if ($Bild === null) {
+            return false;
+        }
+        $ID = $this->Medium('Standbild', MEDIATYPE_IMAGE, 'Standbild', 39);
+        IPS_SetMediaFile($ID, 'media/EZVIZ_' . $this->InstanceID . '_Standbild.jpg', false);
+        IPS_SetMediaContent($ID, base64_encode($Bild));
+        $this->WriteAttributeInteger('StandbildZeit', time());
+        $this->KachelSenden(true);
+        return true;
+    }
+
+    public function GetVisualizationTile(): string
+    {
+        $HTML = file_get_contents(__DIR__ . '/module.html');
+        $Daten = json_encode($this->KachelDaten(true), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        return $HTML . '<script>handleMessage(' . json_encode($Daten, JSON_HEX_TAG) . ');</script>';
+    }
+
+    /**
+     * RTSP-Adresse des Livestreams (mit Zugangsdaten).
+     */
+    public function GetStreamUrl(): string
+    {
+        return $this->StreamUrl(false);
+    }
+
+    /**
+     * Rohdaten der Kamera aus der Cloud (zur Fehlersuche).
+     */
+    public function GetData(): array
+    {
+        $Daten = json_decode($this->ReadAttributeString('Daten'), true);
+        return is_array($Daten) ? $Daten : [];
+    }
+
+    // ------------------------------------------------------------------
+    // Daten verarbeiten
+    // ------------------------------------------------------------------
+
+    private function Start(): void
+    {
+        if (trim($this->ReadPropertyString('Serial')) === '') {
+            $this->SetStatus(EZVIZ::STATUS_KEINE_SERIENNUMMER);
+            return;
+        }
+        if (!$this->HasActiveParent()) {
+            $this->SetStatus(EZVIZ::STATUS_KEINE_VERBINDUNG);
+            return;
+        }
+        $Result = EZVIZ::Response(@$this->SendDataToParent(EZVIZ::Request('Status', ['Serial' => $this->Serial()])));
+        if ($Result['Success'] && is_array($Result['Data'])) {
+            $this->Verarbeiten($Result['Data'], true);
+        } elseif ($Result['Code'] == 404 && $Result['Error'] === 'Gerät nicht im Konto') {
+            $this->SetStatus(EZVIZ::STATUS_NICHT_GEFUNDEN);
+        } elseif ($this->GetStatus() != IS_ACTIVE) {
+            // Konto hat noch keine Daten – sie kommen mit dem nächsten Abruf
+            $this->SetStatus(IS_ACTIVE);
+        }
+    }
+
+    private function Verarbeiten(array $D, bool $Neu): void
+    {
+        if ($Neu) {
+            $this->WriteAttributeString('Daten', json_encode($D));
+        }
+        $Info = $D['deviceInfos'] ?? [];
+        $Status = $D['STATUS'] ?? [];
+        $Optionen = is_array($Status['optionals'] ?? null) ? $Status['optionals'] : [];
+        $Support = is_array($Info['supportExt'] ?? null) ? $Info['supportExt'] : [];
+
+        $this->Setzen('Online', (int) ($Info['status'] ?? 0) === 1);
+        if (array_key_exists('globalStatus', $Status)) {
+            $this->Setzen('Bewegungserkennung', (bool) $Status['globalStatus']);
+        }
+
+        // Schalter, die die Kamera meldet
+        foreach ((array) ($D['SWITCH'] ?? []) as $S) {
+            $Typ = (int) ($S['type'] ?? -1);
+            if (!isset(EZVIZ::SCHALTER[$Typ])) {
+                continue;
+            }
+            $Ident = 'Schalter' . $Typ;
+            if (!@$this->GetIDForIdent($Ident)) {
+                [, $Name, $Icon] = EZVIZ::SCHALTER[$Typ];
+                $this->RegisterVariableBoolean($Ident, $Name, ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'ICON' => $Icon], 10 + array_search($Typ, array_keys(EZVIZ::SCHALTER), true));
+                $this->EnableAction($Ident);
+            }
+            $this->Setzen($Ident, (bool) ($S['enable'] ?? false));
+        }
+
+        // Schwenken (nur bei Schwenk-/Neigekameras)
+        if (($Support['154'] ?? '0') === '1' || ($Support['31'] ?? '0') === '1' || ($Support['30'] ?? '0') === '1') {
+            if (!@$this->GetIDForIdent('Schwenken')) {
+                $Optionen2 = [];
+                foreach (self::RICHTUNGEN as $Wert => [, $Text, $Icon]) {
+                    $Optionen2[] = self::Option($Wert, $Text, $Icon);
+                }
+                $this->RegisterVariableInteger('Schwenken', 'Schwenken', [
+                    'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
+                    'ICON'         => 'arrows-up-down-left-right',
+                    'OPTIONS'      => json_encode($Optionen2)
+                ], 20);
+                $this->EnableAction('Schwenken');
+            }
+        }
+
+        // Akku (nur Akku-Kameras)
+        if (isset($Optionen['powerRemaining']) && is_numeric($Optionen['powerRemaining'])) {
+            if (!@$this->GetIDForIdent('Akku')) {
+                $this->RegisterVariableInteger('Akku', 'Akku', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'SUFFIX' => ' %', 'ICON' => 'battery-half'], 30);
+            }
+            $this->Setzen('Akku', (int) $Optionen['powerRemaining']);
+        }
+
+        // WLAN
+        $Wifi = $D['WIFI'] ?? [];
+        if (isset($Wifi['signal']) && is_numeric($Wifi['signal'])) {
+            if (!@$this->GetIDForIdent('WLAN')) {
+                $this->RegisterVariableInteger('WLAN', 'WLAN-Signal', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'SUFFIX' => ' %', 'ICON' => 'wifi'], 31);
+            }
+            $this->Setzen('WLAN', (int) $Wifi['signal']);
+        }
+
+        $this->Setzen('Firmware', (string) ($Info['version'] ?? ''));
+        $this->Setzen('Update', (int) ($D['UPGRADE']['isNeedUpgrade'] ?? 0) === 3);
+
+        // Lokale IP und Livestream
+        $IP = (string) ($Wifi['address'] ?? '');
+        if ($IP === '' || $IP === '0.0.0.0') {
+            $IP = (string) ($D['CONNECTION']['localIp'] ?? '');
+        }
+        if ($IP !== '' && $IP !== '0.0.0.0') {
+            $this->WriteAttributeString('LokaleIP', $IP);
+        }
+        $this->LivestreamAktualisieren();
+
+        // Letzter Alarm
+        if (is_array($D['Alarm'] ?? null)) {
+            $this->AlarmVerarbeiten($D['Alarm'], $Neu);
+        }
+
+        if ($Neu) {
+            $this->Setzen('Zeitpunkt', time());
+            $this->KachelSenden();
+        }
+        if ($this->GetStatus() != IS_ACTIVE) {
+            $this->SetStatus(IS_ACTIVE);
+        }
+    }
+
+    private function AlarmVerarbeiten(array $A, bool $Neu): void
+    {
+        $Id = (string) ($A['id'] ?? '');
+        $Zeit = (int) ($A['zeit'] ?? 0);
+        if ($Id === '' || $Id === $this->ReadAttributeString('AlarmId')) {
+            return;
+        }
+        $Erster = ($this->ReadAttributeString('AlarmId') === '');
+        $this->WriteAttributeString('AlarmId', $Id);
+
+        $this->Setzen('LetzterAlarm', $Zeit);
+        $this->Setzen('Alarmart', (string) ($A['text'] ?? ''));
+
+        // Bewegung melden – beim allerersten Abruf nur, wenn der Alarm frisch ist
+        $Dauer = max(10, $this->ReadPropertyInteger('Bewegungsdauer'));
+        $Alter = time() - $Zeit;
+        if ($Neu && (!$Erster || $Alter < $Dauer)) {
+            $this->Setzen('Bewegung', true);
+            $Rest = $Erster ? max(5, $Dauer - $Alter) : $Dauer;
+            $this->SetTimerInterval('BewegungAus', $Rest * 1000);
+        }
+
+        if ($this->ReadPropertyBoolean('Alarmbild') && (string) ($A['bild'] ?? '') !== '') {
+            $this->AlarmbildLaden((string) $A['bild']);
+        }
+        // Bei neuem Alarm gleich ein aktuelles Standbild holen
+        if ($Neu && !$Erster && $this->ReadPropertyBoolean('Standbild')) {
+            $this->SetTimerInterval('Standbild', 1000);
+        }
+    }
+
+    private function AlarmbildLaden(string $Url): void
+    {
+        $Bild = $this->BildHerunterladen($Url, 'Alarmbild');
+        if ($Bild === null) {
+            return;
+        }
+
+        $ID = $this->Medium('Alarmbild', MEDIATYPE_IMAGE, 'Alarmbild', 41);
+        IPS_SetMediaFile($ID, 'media/EZVIZ_' . $this->InstanceID . '.jpg', false);
+        IPS_SetMediaContent($ID, base64_encode($Bild));
+        if (!$this->ReadPropertyBoolean('Standbild')) {
+            $this->KachelSenden(true);
+        }
+    }
+
+    /**
+     * Lädt ein Bild aus der EZVIZ-Cloud und entschlüsselt es bei Bedarf.
+     */
+    private function BildHerunterladen(string $Url, string $Was): ?string
+    {
+        $ch = curl_init($Url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        $Bild = curl_exec($ch);
+        $Code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if (!is_string($Bild) || $Bild === '' || $Code != 200) {
+            $this->SendDebug($Was, 'Download fehlgeschlagen (HTTP ' . $Code . ')', 0);
+            return null;
+        }
+        $Bild = EZVIZ::BildEntschluesseln($Bild, $this->ReadPropertyString('Verifizierungscode'));
+        if ($Bild === null) {
+            $this->SendDebug($Was, 'Bild ist verschlüsselt – Verifizierungscode fehlt oder ist falsch', 0);
+        }
+        return $Bild;
+    }
+
+    /**
+     * Standbild lokal: ein einzelnes Bild per FFmpeg aus dem RTSP-Stream.
+     */
+    private function StandbildLokal(): ?string
+    {
+        $FFmpeg = $this->FFmpegFinden();
+        $Url = $this->StreamUrl(false);
+        if ($FFmpeg === '' || $Url === '') {
+            $this->SendDebug('Standbild lokal', $FFmpeg === '' ? 'FFmpeg nicht gefunden' : 'IP-Adresse unbekannt', 0);
+            return null;
+        }
+        $Datei = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ezviz_' . $this->InstanceID . '.jpg';
+        @unlink($Datei);
+
+        $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -i ' . escapeshellarg($Url)
+            . ' -frames:v 1 -q:v 4 -y ' . escapeshellarg($Datei);
+        if (DIRECTORY_SEPARATOR === '/' && is_executable('/usr/bin/timeout')) {
+            $Befehl = '/usr/bin/timeout 10 ' . $Befehl;
+        }
+        $Start = microtime(true);
+        $Ausgabe = [];
+        $Code = 0;
+        exec($Befehl . ' 2>&1', $Ausgabe, $Code);
+
+        $Bild = is_file($Datei) ? file_get_contents($Datei) : false;
+        @unlink($Datei);
+        if ($Code !== 0 || !is_string($Bild) || $Bild === '') {
+            $this->SendDebug('Standbild lokal', 'fehlgeschlagen (' . $Code . '): ' . implode(' ', array_slice($Ausgabe, 0, 3)), 0);
+            return null;
+        }
+        $this->SendDebug('Standbild lokal', strlen($Bild) . ' Bytes in ' . round(microtime(true) - $Start, 1) . ' s', 0);
+        return $Bild;
+    }
+
+    /**
+     * Standbild über die Cloud: die Kamera macht ein Foto und lädt es hoch.
+     */
+    private function StandbildCloud(): ?string
+    {
+        $Result = $this->Senden('PUT', '/v3/devconfig/v1/' . $this->Serial() . '/1/capture');
+        if (!$Result['Success']) {
+            $this->SendDebug('Standbild Cloud', 'fehlgeschlagen: ' . $Result['Error'], 0);
+            return null;
+        }
+        $Url = self::BildUrlSuchen($Result['Data']);
+        if ($Url === null) {
+            $this->SendDebug('Standbild Cloud', 'keine Bildadresse in der Antwort', 0);
+            return null;
+        }
+        return $this->BildHerunterladen($Url, 'Standbild Cloud');
+    }
+
+    private static function BildUrlSuchen($Wert): ?string
+    {
+        if (is_string($Wert)) {
+            foreach (explode(';', $Wert) as $Teil) {
+                $Teil = trim($Teil);
+                if (strpos($Teil, 'http://') === 0 || strpos($Teil, 'https://') === 0) {
+                    return $Teil;
+                }
+            }
+            return null;
+        }
+        if (!is_array($Wert)) {
+            return null;
+        }
+        foreach (['picUrl', 'picURL', 'imageUrl', 'imageURL', 'captureUrl', 'captureURL', 'pic', 'pics', 'image', 'url'] as $Key) {
+            if (isset($Wert[$Key]) && is_string($Wert[$Key]) && ($Url = self::BildUrlSuchen($Wert[$Key])) !== null) {
+                return $Url;
+            }
+        }
+        foreach ($Wert as $Teil) {
+            if (is_array($Teil) && ($Url = self::BildUrlSuchen($Teil)) !== null) {
+                return $Url;
+            }
+        }
+        return null;
+    }
+
+    private function FFmpegFinden(): string
+    {
+        $Pfad = trim($this->ReadPropertyString('FFmpeg'));
+        if ($Pfad !== '') {
+            return $this->Ausfuehrbar($Pfad) ? $Pfad : '';
+        }
+        $Gemerkt = $this->ReadAttributeString('FFmpegPfad');
+        if ($Gemerkt !== '' && is_file($Gemerkt)) {
+            return $Gemerkt;
+        }
+        $Gefunden = '';
+        // Einfachster Weg (z. B. Symcon im Docker-Container): Datei "ffmpeg" in den Symcon-Ordner legen
+        foreach (['ffmpeg', 'ffmpeg.exe'] as $Name) {
+            $Kandidat = rtrim(IPS_GetKernelDir(), '/\\') . DIRECTORY_SEPARATOR . $Name;
+            if ($this->Ausfuehrbar($Kandidat)) {
+                $this->WriteAttributeString('FFmpegPfad', $Kandidat);
+                return $Kandidat;
+            }
+        }
+        if (DIRECTORY_SEPARATOR === '/') {
+            // Synology: Pakete der SynoCommunity (ffmpeg7/6/5) haben Vorrang vor dem eingeschränkten DSM-FFmpeg
+            $Kandidaten = [
+                '/var/packages/ffmpeg7/target/bin/ffmpeg',
+                '/var/packages/ffmpeg6/target/bin/ffmpeg',
+                '/var/packages/ffmpeg5/target/bin/ffmpeg',
+                '/var/packages/ffmpeg/target/bin/ffmpeg',
+                '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/bin/ffmpeg'
+            ];
+            foreach ($Kandidaten as $Kandidat) {
+                if (is_executable($Kandidat)) {
+                    $Gefunden = $Kandidat;
+                    break;
+                }
+            }
+        } else {
+            $Ausgabe = [];
+            @exec('where ffmpeg 2>NUL', $Ausgabe);
+            if (isset($Ausgabe[0]) && is_file(trim($Ausgabe[0]))) {
+                $Gefunden = trim($Ausgabe[0]);
+            }
+        }
+        $this->WriteAttributeString('FFmpegPfad', $Gefunden);
+        return $Gefunden;
+    }
+
+    /**
+     * Prüft, ob die Datei existiert, und macht sie bei Bedarf ausführbar
+     * (nach dem Hochladen per File Station fehlt dieses Recht oft).
+     */
+    private function Ausfuehrbar(string $Datei): bool
+    {
+        if (!is_file($Datei)) {
+            return false;
+        }
+        if (DIRECTORY_SEPARATOR === '/' && !is_executable($Datei)) {
+            @chmod($Datei, 0755);
+            clearstatcache(true, $Datei);
+            if (!is_executable($Datei)) {
+                $this->SendDebug('FFmpeg', $Datei . ' ist nicht ausführbar', 0);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private function StandbildTimer(): void
+    {
+        $Sekunden = $this->ReadPropertyInteger('StandbildIntervall');
+        if (!$this->ReadPropertyBoolean('Standbild') || $Sekunden <= 0) {
+            $this->SetTimerInterval('Standbild', 0);
+            return;
+        }
+        $this->SetTimerInterval('Standbild', max(10, $Sekunden) * 1000);
+    }
+
+    private function Schlaeft(): bool
+    {
+        $ID = @$this->GetIDForIdent('Schalter21');
+        return $ID && GetValue($ID) === true;
+    }
+
+    // ---------- Kachel ----------
+
+    private function KachelDaten(bool $MitBild): array
+    {
+        $Wert = function (string $Ident, $Standard) {
+            $ID = @$this->GetIDForIdent($Ident);
+            return $ID ? GetValue($ID) : $Standard;
+        };
+        $Daten = json_decode($this->ReadAttributeString('Daten'), true);
+        $Support = is_array($Daten['deviceInfos']['supportExt'] ?? null) ? $Daten['deviceInfos']['supportExt'] : [];
+
+        $K = [
+            'name'       => IPS_GetName($this->InstanceID),
+            'online'     => (bool) $Wert('Online', false),
+            'schutz'     => (bool) $Wert('Bewegungserkennung', false),
+            'bewegung'   => (bool) $Wert('Bewegung', false),
+            'schlaf'     => $this->Schlaeft(),
+            'hatSchlaf'  => (bool) @$this->GetIDForIdent('Schalter21'),
+            'alarm'      => (int) $Wert('LetzterAlarm', 0),
+            'alarmText'  => (string) $Wert('Alarmart', ''),
+            'ptz'        => (bool) @$this->GetIDForIdent('Schwenken'),
+            'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit')
+        ];
+        if ($MitBild) {
+            $K['bild'] = '';
+            foreach (['Standbild', 'Alarmbild'] as $Ident) {
+                $ID = @IPS_GetObjectIDByIdent($Ident, $this->InstanceID);
+                if ($ID !== false && IPS_MediaExists($ID)) {
+                    $Inhalt = (string) @IPS_GetMediaContent($ID);
+                    if ($Inhalt !== '') {
+                        $K['bild'] = $Inhalt;
+                        if ($Ident === 'Alarmbild') {
+                            $K['bildZeit'] = $K['alarm'];
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        return $K;
+    }
+
+    private function KachelSenden(bool $MitBild = false): void
+    {
+        if ($this->ReadPropertyBoolean('Kachel')) {
+            $this->UpdateVisualizationValue(json_encode($this->KachelDaten($MitBild)));
+        }
+    }
+
+    private function KachelAktion(string $Wert): void
+    {
+        $A = json_decode($Wert, true);
+        if (!is_array($A)) {
+            return;
+        }
+        switch ((string) ($A['aktion'] ?? '')) {
+            case 'bild':
+                $this->UpdateSnapshot();
+                break;
+            case 'schwenken':
+                $this->Move((string) ($A['richtung'] ?? ''));
+                $this->SetTimerInterval('Standbild', 1500);
+                break;
+            case 'schutz':
+                $this->SetMotionDetection(!(bool) GetValue($this->GetIDForIdent('Bewegungserkennung')));
+                break;
+            case 'schlaf':
+                if (@$this->GetIDForIdent('Schalter21')) {
+                    $this->SetSwitch(21, !$this->Schlaeft());
+                }
+                break;
+        }
+        $this->KachelSenden();
+    }
+
+    private function LivestreamAktualisieren(): void
+    {
+        if (!$this->ReadPropertyBoolean('Livestream')) {
+            return;
+        }
+        $Url = $this->StreamUrl(false);
+        if ($Url === '') {
+            return;
+        }
+        $ID = $this->Medium('Livestream', MEDIATYPE_STREAM, 'Livestream', 40);
+        if (IPS_GetMedia($ID)['MediaFile'] !== $Url) {
+            IPS_SetMediaFile($ID, $Url, false);
+        }
+    }
+
+    private function StreamUrl(bool $Maskiert): string
+    {
+        $IP = $this->IPAdresse();
+        if ($IP === '') {
+            return '';
+        }
+        $Code = $this->ReadPropertyString('Verifizierungscode');
+        $Benutzer = $this->ReadPropertyString('Benutzer');
+        $Zugang = '';
+        if ($Benutzer !== '') {
+            $Zugang = rawurlencode($Benutzer) . ($Code !== '' ? ':' . ($Maskiert ? '******' : rawurlencode($Code)) : '') . '@';
+        }
+        $Pfad = self::STREAMS[$this->ReadPropertyInteger('Stream')] ?? '';
+        if ($Pfad === '') {
+            $Pfad = '/' . ltrim($this->ReadPropertyString('Pfad'), '/');
+        }
+        return 'rtsp://' . $Zugang . $IP . ':' . $this->ReadPropertyInteger('Port') . $Pfad;
+    }
+
+    private function IPAdresse(): string
+    {
+        $IP = trim($this->ReadPropertyString('IP'));
+        return $IP !== '' ? $IP : $this->ReadAttributeString('LokaleIP');
+    }
+
+    // ------------------------------------------------------------------
+    // Hilfsfunktionen
+    // ------------------------------------------------------------------
+
+    private function GrundvariablenAnlegen(): void
+    {
+        $Datum = defined('VARIABLE_PRESENTATION_DATE_TIME')
+            ? ['PRESENTATION' => VARIABLE_PRESENTATION_DATE_TIME]
+            : ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION];
+        $Anzeige = ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION];
+
+        $this->RegisterVariableBoolean('Online', 'Online', $Anzeige + ['ICON' => 'signal'], 1);
+
+        $this->RegisterVariableBoolean('Bewegungserkennung', 'Bewegungserkennung', ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'ICON' => 'shield-halved'], 2);
+        $this->EnableAction('Bewegungserkennung');
+
+        $this->RegisterVariableBoolean('Bewegung', 'Bewegung erkannt', $Anzeige + ['ICON' => 'person-walking'], 3);
+        $this->RegisterVariableInteger('LetzterAlarm', 'Letzter Alarm', $Datum + ['ICON' => 'bell'], 4);
+        $this->RegisterVariableString('Alarmart', 'Alarmart', $Anzeige + ['ICON' => 'circle-info'], 5);
+
+        $this->RegisterVariableString('Firmware', 'Firmware', $Anzeige + ['ICON' => 'microchip'], 32);
+        $this->RegisterVariableBoolean('Update', 'Firmware-Update verfügbar', $Anzeige + ['ICON' => 'download'], 33);
+
+        $this->RegisterVariableInteger('Aktualisieren', 'Aktualisieren', [
+            'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
+            'ICON'         => 'arrows-rotate',
+            'OPTIONS'      => json_encode([self::Option(0, 'Aktualisieren', '')])
+        ], 50);
+        $this->EnableAction('Aktualisieren');
+
+        $this->RegisterVariableInteger('Zeitpunkt', 'Letzte Aktualisierung', $Datum + ['ICON' => 'clock'], 51);
+    }
+
+    private static function Option(int $Wert, string $Text, string $Icon): array
+    {
+        return [
+            'Value'       => $Wert,
+            'Caption'     => $Text,
+            'IconActive'  => $Icon !== '',
+            'IconValue'   => $Icon,
+            'ColorActive' => false,
+            'ColorValue'  => -1
+        ];
+    }
+
+    private function Setzen(string $Ident, mixed $Wert): void
+    {
+        $ID = @$this->GetIDForIdent($Ident);
+        if ($ID && GetValue($ID) !== $Wert) {
+            $this->SetValue($Ident, $Wert);
+        }
+    }
+
+    private function Medium(string $Ident, int $Typ, string $Name, int $Position): int
+    {
+        $ID = @IPS_GetObjectIDByIdent($Ident, $this->InstanceID);
+        if ($ID === false || !IPS_MediaExists($ID)) {
+            $ID = IPS_CreateMedia($Typ);
+            IPS_SetParent($ID, $this->InstanceID);
+            IPS_SetIdent($ID, $Ident);
+            IPS_SetName($ID, $Name);
+            IPS_SetPosition($ID, $Position);
+            if ($Typ === MEDIATYPE_IMAGE) {
+                IPS_SetMediaCached($ID, true);
+            }
+        }
+        return $ID;
+    }
+
+    private function MedienLoeschen(string $Ident): void
+    {
+        $ID = @IPS_GetObjectIDByIdent($Ident, $this->InstanceID);
+        if ($ID !== false && IPS_MediaExists($ID)) {
+            IPS_DeleteMedia($ID, true);
+        }
+    }
+
+    private function Senden(string $Method, string $Path, array $Form = [], array $Query = []): array
+    {
+        if (!$this->HasActiveParent()) {
+            return ['Success' => false, 'Code' => 0, 'Data' => null, 'Error' => 'Konto nicht verbunden'];
+        }
+        return EZVIZ::Response(@$this->SendDataToParent(EZVIZ::Request('Anfrage', [
+            'Method' => $Method,
+            'Path'   => $Path,
+            'Query'  => $Query,
+            'Form'   => $Form
+        ])));
+    }
+
+    private function Fehler(string $Was, array $Result): void
+    {
+        $this->SendDebug($Was, 'fehlgeschlagen: ' . $Result['Error'], 0);
+        $this->LogMessage('EZVIZ ' . IPS_GetName($this->InstanceID) . ': ' . $Was . ' fehlgeschlagen (' . $Result['Error'] . ')', KL_WARNING);
+    }
+
+    private function Serial(): string
+    {
+        return rawurlencode(trim($this->ReadPropertyString('Serial')));
+    }
+
+    private static function Uuid(): string
+    {
+        $B = random_bytes(16);
+        $B[6] = chr((ord($B[6]) & 0x0f) | 0x40);
+        $B[8] = chr((ord($B[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($B), 4));
+    }
+
+    private function ParentBeobachten(): void
+    {
+        $Alt = $this->ReadAttributeInteger('ParentID');
+        $Neu = IPS_GetInstance($this->InstanceID)['ConnectionID'];
+        if ($Alt != $Neu) {
+            if ($Alt > 0) {
+                $this->UnregisterMessage($Alt, IM_CHANGESTATUS);
+            }
+            if ($Neu > 0) {
+                $this->RegisterMessage($Neu, IM_CHANGESTATUS);
+            }
+            $this->WriteAttributeInteger('ParentID', $Neu);
+        }
+    }
+}

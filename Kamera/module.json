@@ -1,0 +1,18 @@
+{
+    "id": "{C4BCA507-8306-4DC3-B7B0-648BEED24442}",
+    "name": "EZVIZ Kamera",
+    "type": 3,
+    "vendor": "EZVIZ",
+    "aliases": [
+        "EZVIZ Kamera"
+    ],
+    "parentRequirements": [
+        "{7E4D686F-4989-4A13-AAF9-F94DECFFE88F}"
+    ],
+    "childRequirements": [],
+    "implemented": [
+        "{5893EB57-6525-408A-BED7-FA6BD08A13F0}"
+    ],
+    "prefix": "EZVIZ",
+    "url": "https://github.com/cfaf2002/EZVIZ_Symcon/blob/main/Kamera/README.md"
+}
