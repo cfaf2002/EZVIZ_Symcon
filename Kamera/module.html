@@ -32,6 +32,16 @@
     .marke.alarm { background: var(--ez-alarm); display: none; }
     .marke.alarm.an { display: flex; }
     .zeit { margin-left: auto; }
+    .marke.akku { display: none; }
+    .marke.akku.da { display: flex; }
+    .marke.akku.schwach { background: var(--ez-alarm); }
+    .batterie { position: relative; width: 20px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px; }
+    .batterie::after { content: ''; position: absolute; right: -4px; top: 2px; width: 2px; height: 3px; background: currentColor; border-radius: 0 1px 1px 0; }
+    .batterie i { position: absolute; left: 1px; top: 1px; bottom: 1px; border-radius: 1px; background: var(--ez-gruen); }
+    .marke.akku.mittel .batterie i { background: #f0b429; }
+    .marke.akku.schwach .batterie i { background: #fff; }
+    .warnung { display: none; background: var(--ez-alarm); color: #fff; border-radius: 10px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
+    .warnung.an { display: block; }
     .pfeil { position: absolute; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 18px; cursor: pointer; display: none; align-items: center; justify-content: center; }
     .pfeil:hover { background: rgba(0, 0, 0, 0.65); }
     .pfeil:active { transform: scale(0.92); }
@@ -58,6 +68,7 @@
         <div class="leer" id="leer">Noch kein Bild – „Bild“ antippen</div>
         <div class="oben">
             <span class="marke" id="status"><span class="punkt"></span><span id="name"></span></span>
+            <span class="marke akku" id="akku" title="Akku"><span class="batterie"><i id="akkuFuell"></i></span><span id="akkuText"></span></span>
             <span class="marke alarm" id="bewegung">Bewegung</span>
             <span class="marke zeit" id="zeit"></span>
         </div>
@@ -67,6 +78,7 @@
         <button class="pfeil runter" onclick="schwenken('down')" title="Runter">▼</button>
         <div class="laedt" id="laedt"></div>
     </div>
+    <div class="warnung" id="warnung"></div>
     <div class="info" id="info"></div>
     <div class="knoepfe">
         <button class="knopf" onclick="aktion('bild')">⟳ Bild</button>
@@ -127,6 +139,19 @@
         if (ezviz.schlaf && !ezviz.bild) {
             document.getElementById('leer').textContent = 'Kamera im Schlafmodus';
         }
+        var akku = document.getElementById('akku');
+        var hatAkku = ezviz.akku !== null && ezviz.akku !== undefined;
+        akku.classList.toggle('da', hatAkku);
+        if (hatAkku) {
+            var p = Math.max(0, Math.min(100, ezviz.akku));
+            document.getElementById('akkuText').textContent = p + ' %';
+            document.getElementById('akkuFuell').style.width = Math.max(1, Math.round(p * 0.155)) + 'px';
+            akku.classList.toggle('schwach', !!ezviz.akkuSchwach);
+            akku.classList.toggle('mittel', !ezviz.akkuSchwach && p <= 40);
+        }
+        var warnung = document.getElementById('warnung');
+        warnung.classList.toggle('an', hatAkku && !!ezviz.akkuSchwach);
+        warnung.textContent = hatAkku ? 'Akku schwach (' + ezviz.akku + ' %) – bitte laden' : '';
         var info = [];
         if (!ezviz.online) info.push('Kamera offline');
         if (ezviz.alarm) info.push('Letzter Alarm: ' + datum(ezviz.alarm) + (ezviz.alarmText ? ' – ' + ezviz.alarmText : ''));

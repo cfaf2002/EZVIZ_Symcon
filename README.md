@@ -46,6 +46,11 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 5)**
+- Akku-Kameras: Akkustand in der Kachel (grün/gelb/rot) und Variable „Akku schwach“
+- Meldung an die Visualisierung (Benachrichtigung + Push), wenn der Akku die einstellbare Grenze erreicht – einmalig, erneut erst nach dem Laden
+- Button „Akku-Meldung testen“ und Befehl EZVIZ_TestBatteryNotification
+
 **Version 1.0 (Build 4)**
 - FFmpeg wird automatisch im Symcon-Ordner gefunden und bei Bedarf ausführbar gemacht – im Docker-Container genügt es, die Datei „ffmpeg“ per File Station dort abzulegen
 

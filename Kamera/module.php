@@ -48,6 +48,9 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyBoolean('Alarmbild', true);
         $this->RegisterPropertyInteger('Bewegungsdauer', 60);
         $this->RegisterPropertyInteger('Schwenkdauer', 500);
+        $this->RegisterPropertyInteger('AkkuGrenze', 20);
+        $this->RegisterPropertyBoolean('AkkuMeldung', true);
+        $this->RegisterPropertyInteger('VisuID', 0);
 
         $this->RegisterAttributeString('Daten', '');
         $this->RegisterAttributeString('AlarmId', '');
@@ -55,6 +58,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeInteger('ParentID', 0);
         $this->RegisterAttributeInteger('StandbildZeit', 0);
         $this->RegisterAttributeInteger('LokalPause', 0);
+        $this->RegisterAttributeBoolean('AkkuGemeldet', false);
         $this->RegisterAttributeString('FFmpegPfad', '');
 
         $this->RegisterTimer('BewegungAus', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "BewegungAus", true);');
@@ -433,10 +437,7 @@ class EZVIZKamera extends IPSModuleStrict
 
         // Akku (nur Akku-Kameras)
         if (isset($Optionen['powerRemaining']) && is_numeric($Optionen['powerRemaining'])) {
-            if (!@$this->GetIDForIdent('Akku')) {
-                $this->RegisterVariableInteger('Akku', 'Akku', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'SUFFIX' => ' %', 'ICON' => 'battery-half'], 30);
-            }
-            $this->Setzen('Akku', (int) $Optionen['powerRemaining']);
+            $this->AkkuVerarbeiten((int) $Optionen['powerRemaining'], $Neu);
         }
 
         // WLAN
@@ -727,6 +728,8 @@ class EZVIZKamera extends IPSModuleStrict
             'alarm'      => (int) $Wert('LetzterAlarm', 0),
             'alarmText'  => (string) $Wert('Alarmart', ''),
             'ptz'        => (bool) @$this->GetIDForIdent('Schwenken'),
+            'akku'       => @$this->GetIDForIdent('Akku') ? (int) $Wert('Akku', 0) : null,
+            'akkuSchwach'=> (bool) $Wert('AkkuSchwach', false),
             'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit')
         ];
         if ($MitBild) {
@@ -779,6 +782,75 @@ class EZVIZKamera extends IPSModuleStrict
                 break;
         }
         $this->KachelSenden();
+    }
+
+    // ---------- Akku ----------
+
+    private function AkkuVerarbeiten(int $Stand, bool $Neu): void
+    {
+        $Stand = max(0, min(100, $Stand));
+        if (!@$this->GetIDForIdent('Akku')) {
+            $this->RegisterVariableInteger('Akku', 'Akku', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'SUFFIX' => ' %', 'ICON' => 'battery-half'], 30);
+            $this->RegisterVariableBoolean('AkkuSchwach', 'Akku schwach', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'battery-quarter'], 31);
+        }
+        $this->Setzen('Akku', $Stand);
+
+        $Grenze = $this->ReadPropertyInteger('AkkuGrenze');
+        $Schwach = $Grenze > 0 && $Stand <= $Grenze;
+        $Gemeldet = $this->ReadAttributeBoolean('AkkuGemeldet');
+
+        if ($Schwach) {
+            $this->Setzen('AkkuSchwach', true);
+            // Nur einmal melden, bis der Akku wieder geladen ist
+            if ($Neu && !$Gemeldet) {
+                $this->WriteAttributeBoolean('AkkuGemeldet', true);
+                $this->AkkuMelden($Stand);
+            }
+        } elseif ($Stand >= $Grenze + 5) {
+            // 5 % Abstand, damit ein schwankender Wert nicht ständig neu meldet
+            $this->Setzen('AkkuSchwach', false);
+            if ($Gemeldet) {
+                $this->WriteAttributeBoolean('AkkuGemeldet', false);
+            }
+        }
+    }
+
+    private function AkkuMelden(int $Stand): void
+    {
+        $Name = IPS_GetName($this->InstanceID);
+        $Text = 'Akku von „' . $Name . '“ nur noch ' . $Stand . ' % – bitte laden.';
+        $this->LogMessage($Text, KL_WARNING);
+
+        if (!$this->ReadPropertyBoolean('AkkuMeldung')) {
+            return;
+        }
+        $Visu = $this->ReadPropertyInteger('VisuID');
+        if ($Visu <= 0 || !IPS_InstanceExists($Visu)) {
+            $this->SendDebug('Akku', 'Keine Visualisierung für die Meldung ausgewählt', 0);
+            return;
+        }
+        $Titel = mb_substr('Akku schwach: ' . $Name, 0, 32);
+        if (function_exists('VISU_PostNotification')) {
+            // Antippen öffnet die Kamera; liegt sie nicht in der Visualisierung, ohne Ziel senden
+            $Ok = @VISU_PostNotification($Visu, $Titel, $Text, 'Warning', $this->InstanceID);
+            if ($Ok === false) {
+                $Ok = @VISU_PostNotification($Visu, $Titel, $Text, 'Warning', 0);
+            }
+            $this->SendDebug('Akku', 'Meldung an Visualisierung ' . ($Ok !== false ? 'gesendet' : 'fehlgeschlagen'), 0);
+        } elseif (function_exists('WFC_PushNotification')) {
+            @WFC_PushNotification($Visu, $Titel, $Text, '', $this->InstanceID);
+            $this->SendDebug('Akku', 'Meldung an WebFront gesendet', 0);
+        }
+    }
+
+    /**
+     * Schickt eine Test-Meldung „Akku schwach“ an die ausgewählte Visualisierung.
+     */
+    public function TestBatteryNotification(): bool
+    {
+        $ID = @$this->GetIDForIdent('Akku');
+        $this->AkkuMelden($ID ? (int) GetValue($ID) : $this->ReadPropertyInteger('AkkuGrenze'));
+        return $this->ReadPropertyInteger('VisuID') > 0;
     }
 
     private function LivestreamAktualisieren(): void

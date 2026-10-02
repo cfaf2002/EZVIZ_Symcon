@@ -160,6 +160,36 @@
         },
         {
             "type": "ExpansionPanel",
+            "caption": "Akku (nur Akku-Kameras)",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "NumberSpinner",
+                    "name": "AkkuGrenze",
+                    "caption": "Akku schwach ab",
+                    "suffix": "% (0 = keine Warnung)",
+                    "minimum": 0,
+                    "maximum": 100
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "AkkuMeldung",
+                    "caption": "Meldung an die Visualisierung senden"
+                },
+                {
+                    "type": "SelectInstance",
+                    "name": "VisuID",
+                    "caption": "Visualisierung",
+                    "width": "350px"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Die Meldung kommt einmal, wenn der Akku die Grenze erreicht, und erst wieder, nachdem er geladen wurde (5 % über der Grenze). Sie erscheint in den Benachrichtigungen der Visualisierung und als Push auf den angemeldeten Handys; Antippen öffnet die Kamera. Zusätzlich steht sie im Meldungsfenster, und die Kachel zeigt einen roten Hinweis."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
             "caption": "Schwenken",
             "expanded": false,
             "items": [
@@ -194,6 +224,11 @@
             "type": "Button",
             "caption": "Standbild jetzt holen",
             "onClick": "echo EZVIZ_UpdateSnapshot($id) ? 'Standbild aktualisiert.' : 'Kein Standbild – Details im Debug.';"
+        },
+        {
+            "type": "Button",
+            "caption": "Akku-Meldung testen",
+            "onClick": "echo EZVIZ_TestBatteryNotification($id) ? 'Test-Meldung gesendet.' : 'Bitte zuerst unter „Akku“ eine Visualisierung auswählen und übernehmen.';"
         },
         {
             "type": "Button",

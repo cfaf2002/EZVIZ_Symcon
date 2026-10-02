@@ -17,6 +17,8 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 | Benutzer / IP / Port | Standard `admin`, IP automatisch aus der Cloud, Port 554 |
 | Bild des letzten Alarms laden | Lädt das Alarmbild in ein Medienobjekt |
 | „Bewegung erkannt“ zurücksetzen nach | Sekunden, nach denen die Variable wieder auf Aus geht (Standard 60) |
+| Akku schwach ab | Grenze in % für die Warnung (Standard 20, 0 = keine Warnung) |
+| Meldung an die Visualisierung senden / Visualisierung | Schickt bei schwachem Akku eine Benachrichtigung an die ausgewählte Kachel-Visualisierung (erscheint dort und als Push auf den Handys) |
 | Dauer je Schwenkschritt | Wie lange die Kamera pro Tastendruck schwenkt (Standard 500 ms) |
 
 ## Schneller Bildaufbau
@@ -33,6 +35,11 @@ Kommt kein Livebild, die Adresse zuerst mit VLC testen – sie steht im Button �
 - Zeigt das neueste Standbild (ohne Standbild das letzte Alarmbild) mit Alter, Online-Punkt und „Bewegung“-Hinweis
 - Pfeile im Bild schwenken die Kamera, danach kommt gleich ein neues Bild
 - Knöpfe: Bild neu holen, Bewegungserkennung, Schlafmodus
+- Akku-Kameras: Akkustand oben im Bild (grün, ab 40 % gelb, unter der Grenze rot) und bei schwachem Akku ein roter Hinweis unter dem Bild
+
+## Akku-Warnung
+
+Erreicht der Akku die eingestellte Grenze, kommt **eine** Meldung: in der Visualisierung, als Push auf den angemeldeten Handys und im Meldungsfenster. Eine neue Meldung gibt es erst, nachdem der Akku wieder geladen wurde (5 % über der Grenze). Mit „Akku-Meldung testen“ lässt sich prüfen, ob die Meldung ankommt.
 
 ## Variablen
 
@@ -44,7 +51,8 @@ Kommt kein Livebild, die Adresse zuerst mit VLC testen – sie steht im Button �
 | Letzter Alarm / Alarmart | Zeitpunkt und Art des neuesten Alarms |
 | Schalter | Nur die, die die Kamera meldet: Schlafmodus (Privatsphäre), Objektiv abdecken, Statusleuchte, Infrarot-Nachtsicht, Tonaufnahme, Bewegungsverfolgung, Alarmton, Alarmlicht |
 | Schwenken | Links / Rechts / Hoch / Runter – nur bei Schwenk-/Neigekameras (z. B. C8C) |
-| Akku / WLAN-Signal | Nur wenn die Kamera die Werte liefert |
+| Akku / Akku schwach | Nur bei Akku-Kameras: Akkustand und ob die Grenze erreicht ist |
+| WLAN-Signal | Nur wenn die Kamera den Wert liefert |
 | Firmware / Firmware-Update verfügbar | Firmwarestand |
 | Aktualisieren / Letzte Aktualisierung | Sofortige Abfrage und Zeitpunkt des letzten Abrufs |
 
@@ -55,6 +63,7 @@ Medienobjekte: **Standbild**, **Livestream** (RTSP) und **Alarmbild**.
 ```php
 bool   EZVIZ_Update(int $InstanzID);                              // Sofort neu abfragen
 bool   EZVIZ_UpdateSnapshot(int $InstanzID);                      // Sofort neues Standbild holen
+bool   EZVIZ_TestBatteryNotification(int $InstanzID);             // Test-Meldung „Akku schwach“ senden
 bool   EZVIZ_SetMotionDetection(int $InstanzID, bool $Aktiv);     // Bewegungserkennung ein/aus
 bool   EZVIZ_SetSwitch(int $InstanzID, int $Typ, bool $Aktiv);    // z. B. 21 = Schlafmodus, 3 = Statusleuchte, 10 = Nachtsicht
 bool   EZVIZ_Move(int $InstanzID, string $Richtung);              // 'left', 'right', 'up', 'down'
