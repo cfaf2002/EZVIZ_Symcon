@@ -62,11 +62,15 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeBoolean('AkkuGemeldet', false);
         $this->RegisterAttributeString('StandbildFehler', '');
         $this->RegisterAttributeString('StandbildWeg', '');
+        $this->RegisterAttributeInteger('LetzterLauf', 0);
         $this->RegisterAttributeString('FFmpegPfad', '');
 
-        $this->RegisterTimer('BewegungAus', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "BewegungAus", true);');
+        // Timer rufen öffentliche Funktionen auf (bewährtes Muster, unabhängig von Variablen-Idents)
+        $this->RegisterTimer('BewegungAus', 0, 'EZVIZ_TimerMotionReset($_IPS[\'TARGET\']);');
         // Eigener Aktionsname, da "Standbild" schon das Medienobjekt heißt
-        $this->RegisterTimer('Standbild', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "StandbildTimer", true);');
+        $this->RegisterTimer('Standbild', 0, 'EZVIZ_TimerSnapshot($_IPS[\'TARGET\']);');
+        // Einmaliges, sofortiges Standbild (nach Übernehmen, Alarm, Schwenken) – getrennt vom festen Intervall
+        $this->RegisterTimer('StandbildSofort', 0, 'EZVIZ_TimerSnapshotOnce($_IPS[\'TARGET\']);');
     }
 
     /**
@@ -100,6 +104,7 @@ class EZVIZKamera extends IPSModuleStrict
         }
         $this->SetVisualizationType($this->ReadPropertyBoolean('Kachel') ? 1 : 0);
         $this->SetTimerInterval('Standbild', 0);
+        $this->SetTimerInterval('StandbildSofort', 0);
         $this->WriteAttributeInteger('LokalPause', 0);
         $this->WriteAttributeString('FFmpegPfad', '');
 
@@ -117,17 +122,20 @@ class EZVIZKamera extends IPSModuleStrict
             return;
         }
 
-        // Zuletzt bekannte Daten sofort anwenden (z. B. geänderter RTSP-Pfad), dann beim Konto nachfragen
+        // Zuletzt bekannte Daten sofort anwenden (z. B. geänderter RTSP-Pfad)
         $Alt = json_decode($this->ReadAttributeString('Daten'), true);
         if (is_array($Alt)) {
             $this->Verarbeiten($Alt, false);
         }
-        $this->Start();
 
-        // Standbild: gleich ein frisches holen, danach im Intervall
+        // Standbild: gleich ein frisches holen, danach im festen Intervall
         if ($this->ReadPropertyBoolean('Standbild')) {
-            $this->SetTimerInterval('Standbild', 2000);
+            $this->SetTimerInterval('StandbildSofort', 2000);
         }
+        $this->StandbildTimer();
+
+        // Aktuelle Daten beim Konto nachfragen
+        $this->Start();
     }
 
     public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
@@ -180,12 +188,17 @@ class EZVIZKamera extends IPSModuleStrict
             case 'Aktualisieren':
                 $this->Update();
                 if ($this->ReadPropertyBoolean('Standbild')) {
-                    $this->SetTimerInterval('Standbild', 1000);
+                    $this->SetTimerInterval('StandbildSofort', 1000);
                 }
                 break;
             case 'StandbildTimer':
             case 'Standbild':
+                $this->WriteAttributeInteger('LetzterLauf', time());
                 $this->StandbildTimer();
+                $this->UpdateSnapshot();
+                break;
+            case 'StandbildSofort':
+                $this->SetTimerInterval('StandbildSofort', 0);
                 $this->UpdateSnapshot();
                 break;
             case 'Kachel':
@@ -340,6 +353,30 @@ class EZVIZKamera extends IPSModuleStrict
     }
 
     /**
+     * Vom Timer aufgerufen: regelmäßiges Standbild.
+     */
+    public function TimerSnapshot(): void
+    {
+        $this->RequestAction('StandbildTimer', true);
+    }
+
+    /**
+     * Vom Timer aufgerufen: einmaliges Standbild (nach Übernehmen, Alarm, Schwenken).
+     */
+    public function TimerSnapshotOnce(): void
+    {
+        $this->RequestAction('StandbildSofort', true);
+    }
+
+    /**
+     * Vom Timer aufgerufen: „Bewegung erkannt“ zurücksetzen.
+     */
+    public function TimerMotionReset(): void
+    {
+        $this->RequestAction('BewegungAus', true);
+    }
+
+    /**
      * Ergebnis des letzten Standbild-Versuchs als Text.
      */
     public function GetSnapshotStatus(): string
@@ -361,8 +398,13 @@ class EZVIZKamera extends IPSModuleStrict
         $Zeit = $this->ReadAttributeInteger('StandbildZeit');
         $Fehler = $this->ReadAttributeString('StandbildFehler');
         $Weg = $this->ReadAttributeString('StandbildWeg');
+        [$Ms, $Grund] = $this->AutoIntervall();
+        $Lauf = $this->ReadAttributeInteger('LetzterLauf');
+        $Auto = $Ms > 0
+            ? 'Automatisch alle ' . ($Ms / 1000) . ' s (Timer ' . ($this->GetTimerInterval('Standbild') > 0 ? 'läuft' : 'steht!') . ', letzter Lauf ' . ($Lauf > 0 ? date('H:i:s', $Lauf) : 'noch nie') . ')'
+            : 'Automatisch aus: ' . $Grund;
         return 'Standbild: ' . ($Zeit > 0 ? 'zuletzt ' . date('d.m. H:i:s', $Zeit) . ($Weg !== '' ? ' (' . $Weg . ')' : '') : 'noch keins')
-            . ($Fehler !== '' ? ' – letzter Versuch ' . $Fehler : '');
+            . ($Fehler !== '' ? ' – letzter Versuch ' . $Fehler : '') . ' · ' . $Auto;
     }
 
     /**
@@ -613,7 +655,7 @@ class EZVIZKamera extends IPSModuleStrict
         }
         // Bei neuem Alarm gleich ein aktuelles Standbild holen
         if ($Neu && !$Erster && $this->ReadPropertyBoolean('Standbild')) {
-            $this->SetTimerInterval('Standbild', 1000);
+            $this->SetTimerInterval('StandbildSofort', 1000);
         }
     }
 
@@ -872,18 +914,31 @@ class EZVIZKamera extends IPSModuleStrict
         return true;
     }
 
-    private function StandbildTimer(): void
+    /**
+     * Intervall des automatischen Standbilds: [Millisekunden, Grund wenn aus]
+     */
+    private function AutoIntervall(): array
     {
+        if (!$this->ReadPropertyBoolean('Standbild')) {
+            return [0, 'Standbild ist ausgeschaltet'];
+        }
         $Sekunden = $this->ReadPropertyInteger('StandbildIntervall');
+        if ($Sekunden <= 0) {
+            return [0, 'Intervall ist 0 (nur bei Alarm/auf Knopfdruck)'];
+        }
         // Akku-Kameras: regelmäßige Fotos würden den Akku leeren – nur bei Alarm/auf Knopfdruck
         if ($this->HatAkku() && !$this->ReadPropertyBoolean('StandbildAkku')) {
-            $Sekunden = 0;
+            return [0, 'Akku-Kamera – unter „Standbild“ „Auch bei Akku-Kameras regelmäßig aktualisieren“ einschalten'];
         }
-        if (!$this->ReadPropertyBoolean('Standbild') || $Sekunden <= 0) {
-            $this->SetTimerInterval('Standbild', 0);
-            return;
+        return [max(10, $Sekunden) * 1000, ''];
+    }
+
+    private function StandbildTimer(): void
+    {
+        [$Ms] = $this->AutoIntervall();
+        if ($this->GetTimerInterval('Standbild') !== $Ms) {
+            $this->SetTimerInterval('Standbild', $Ms);
         }
-        $this->SetTimerInterval('Standbild', max(10, $Sekunden) * 1000);
     }
 
     private function Schlaeft(): bool
@@ -958,7 +1013,7 @@ class EZVIZKamera extends IPSModuleStrict
                 break;
             case 'schwenken':
                 $this->Move((string) ($A['richtung'] ?? ''));
-                $this->SetTimerInterval('Standbild', 1500);
+                $this->SetTimerInterval('StandbildSofort', 1500);
                 break;
             case 'schutz':
                 $this->SetMotionDetection(!(bool) GetValue($this->GetIDForIdent('Bewegungserkennung')));
@@ -980,6 +1035,7 @@ class EZVIZKamera extends IPSModuleStrict
         if (!@$this->GetIDForIdent('Akku')) {
             $this->RegisterVariableInteger('Akku', 'Akku', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'SUFFIX' => ' %', 'ICON' => 'battery-half'], 30);
             $this->RegisterVariableBoolean('AkkuSchwach', 'Akku schwach', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'battery-quarter'], 31);
+            $this->StandbildTimer();
         }
         $this->Setzen('Akku', $Stand);
 

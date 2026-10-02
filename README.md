@@ -46,6 +46,11 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 11)**
+- Fehler behoben: Automatische Abrufe (Konto alle 60 s, Standbild alle 30 s, „Bewegung erkannt“ zurücksetzen) liefen nicht – alle Timer rufen jetzt direkt Modulfunktionen auf
+- Sofortiges Standbild (nach Übernehmen, Alarm, Schwenken) hat einen eigenen Timer und stört das feste Intervall nicht mehr
+- Instanz zeigt, ob das automatische Standbild läuft, wann es zuletzt lief bzw. warum es aus ist
+
 **Version 1.0 (Build 10)**
 - Fehler behoben: Das automatische Standbild lief nur einmal – der Timer-Aufruf kollidierte mit dem gleichnamigen Medienobjekt „Standbild“
 

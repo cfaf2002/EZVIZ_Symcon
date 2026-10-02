@@ -35,7 +35,7 @@ class EZVIZKonto extends IPSModuleStrict
         $this->RegisterAttributeString('Cache', '{}');
         $this->RegisterAttributeInteger('Stand', 0);
 
-        $this->RegisterTimer('Aktualisieren', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], "Aktualisieren", true);');
+        $this->RegisterTimer('Aktualisieren', 0, 'EZVIZ_RefreshAll($_IPS[\'TARGET\']);');
     }
 
     public function ApplyChanges(): void
