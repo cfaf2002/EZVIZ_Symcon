@@ -685,7 +685,17 @@ class EZVIZKamera extends IPSModuleStrict
     {
         $Id = (string) ($A['id'] ?? '');
         $Zeit = (int) ($A['zeit'] ?? 0);
-        if ($Id === '' || $Id === $this->ReadAttributeString('AlarmId')) {
+        if ($Id === '') {
+            return;
+        }
+        if ($Id === $this->ReadAttributeString('AlarmId')) {
+            // Bekannter Alarm – fehlt aber das Alarmbild (z. B. nach Neustart), es einmal nachladen
+            if ($Neu && $this->ReadPropertyBoolean('Alarmbild') && (string) ($A['bild'] ?? '') !== '') {
+                $ID = @IPS_GetObjectIDByIdent('Alarmbild', $this->InstanceID);
+                if ($ID === false || !IPS_MediaExists($ID) || empty(IPS_GetMedia($ID)['MediaIsAvailable'])) {
+                    $this->AlarmbildLaden((string) $A['bild']);
+                }
+            }
             return;
         }
         $Erster = ($this->ReadAttributeString('AlarmId') === '');
@@ -722,9 +732,7 @@ class EZVIZKamera extends IPSModuleStrict
         $ID = $this->Medium('Alarmbild', MEDIATYPE_IMAGE, 'Alarmbild', 41);
         IPS_SetMediaFile($ID, 'media/EZVIZ_' . $this->InstanceID . '.jpg', false);
         IPS_SetMediaContent($ID, base64_encode($Bild));
-        if (!$this->ReadPropertyBoolean('Standbild')) {
-            $this->KachelSenden(true);
-        }
+        $this->KachelSenden(true);
     }
 
     /**
@@ -859,7 +867,15 @@ class EZVIZKamera extends IPSModuleStrict
     {
         $Result = $this->Senden('PUT', '/v3/devconfig/v1/' . $this->Serial() . '/1/capture');
         if (!$Result['Success']) {
-            $Fehler[] = 'Cloud: ' . trim($Result['Error']);
+            $Code = EZVIZ::ApiCode($Result['Data']);
+            $Texte = [
+                2009 => $this->HatAkku()
+                    ? 'Kamera schläft (bei Akku-Kameras normal) – neues Bild beim nächsten Alarm, bis dahin das letzte Alarmbild'
+                    : 'Kamera hat gerade keine Verbindung zur Cloud – bitte später erneut versuchen',
+                2003 => 'Kamera ist offline',
+                2007 => 'Seriennummer im Konto nicht gefunden'
+            ];
+            $Fehler[] = 'Cloud: ' . ($Texte[$Code] ?? trim($Result['Error']));
             $this->SendDebug('Standbild Cloud', 'fehlgeschlagen: ' . $Result['Error'] . ' ' . json_encode($Result['Data']), 0);
             return null;
         }
@@ -1030,17 +1046,21 @@ class EZVIZKamera extends IPSModuleStrict
             'intervall'  => (int) ($this->AutoIntervall()[0] / 1000)
         ];
         if ($MitBild) {
+            // Das neuere Bild zeigen: Standbild oder Alarmbild
             $K['bild'] = '';
-            foreach (['Standbild', 'Alarmbild'] as $Ident) {
+            $Kandidaten = [
+                'Standbild' => $this->ReadAttributeInteger('StandbildZeit'),
+                'Alarmbild' => $K['alarm']
+            ];
+            arsort($Kandidaten);
+            foreach ($Kandidaten as $Ident => $Zeit) {
                 $ID = @IPS_GetObjectIDByIdent($Ident, $this->InstanceID);
                 if ($ID !== false && IPS_MediaExists($ID)) {
                     $Inhalt = (string) @IPS_GetMediaContent($ID);
                     if ($Inhalt !== '') {
                         $K['bild'] = $Inhalt;
-                        if ($Ident === 'Alarmbild') {
-                            $K['bildZeit'] = $K['alarm'];
-                            $K['bildArt'] = 'Alarmbild';
-                        }
+                        $K['bildZeit'] = $Zeit;
+                        $K['bildArt'] = $Ident;
                         break;
                     }
                 }

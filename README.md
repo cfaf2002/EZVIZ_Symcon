@@ -47,6 +47,11 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 17)**
+- Akku-Kameras: Schläft die Kamera, erscheint statt „Code 2009“ ein verständlicher Hinweis; die Kachel zeigt dann das letzte Alarmbild
+- Fehlt das Alarmbild (z. B. nach Neustart), wird es beim nächsten Abruf automatisch nachgeladen
+- Kachel zeigt immer das neuere Bild (Standbild oder Alarmbild)
+
 **Version 1.0 (Build 16)**
 - Fehler behoben: Standbild und Alarmbild lagen nur im Speicher und fehlten nach einem Neustart von Symcon (rotes Ausrufezeichen) – Bilder werden jetzt als Datei gespeichert; fehlende Bilder werden beim Übernehmen entfernt und neu angelegt
 
