@@ -329,7 +329,6 @@ class EZVIZKamera extends IPSModuleStrict
             $this->SendDebug('Standbild', 'Kamera im Schlafmodus – übersprungen', 0);
             return false;
         }
-        @set_time_limit(90);
         try {
             return $this->StandbildHolen();
         } catch (Throwable $e) {
@@ -690,11 +689,24 @@ class EZVIZKamera extends IPSModuleStrict
      */
     private static function Ausfuehren(string $Befehl, int $Sekunden): array
     {
-        if (!function_exists('proc_open')) {
-            $Ausgabe = [];
-            $Code = 0;
-            @exec($Befehl . ' 2>&1', $Ausgabe, $Code);
-            return [$Code, $Ausgabe];
+        // In Symcon sind einzelne PHP-Funktionen gesperrt – der Reihe nach probieren
+        if (!function_exists('proc_open') || !function_exists('proc_get_status')) {
+            if (function_exists('exec')) {
+                $Ausgabe = [];
+                $Code = 0;
+                if (DIRECTORY_SEPARATOR === '/' && is_executable('/usr/bin/timeout')) {
+                    $Befehl = '/usr/bin/timeout ' . $Sekunden . ' ' . $Befehl;
+                }
+                @exec($Befehl . ' 2>&1', $Ausgabe, $Code);
+                return [$Code === 124 ? -9 : $Code, $Ausgabe];
+            }
+            if (function_exists('IPS_ExecuteEx')) {
+                $Programm = DIRECTORY_SEPARATOR === '/' ? '/bin/sh' : 'cmd.exe';
+                $Parameter = DIRECTORY_SEPARATOR === '/' ? '-c ' . escapeshellarg($Befehl . ' 2>&1') : '/C ' . $Befehl;
+                $Text = (string) @IPS_ExecuteEx($Programm, $Parameter, false, true, -1);
+                return [0, array_values(array_filter(array_map('trim', explode("\n", $Text))))];
+            }
+            return [-1, ['Programme starten ist in diesem Symcon nicht erlaubt']];
         }
         $Prozess = @proc_open($Befehl, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $Rohre);
         if (!is_resource($Prozess)) {

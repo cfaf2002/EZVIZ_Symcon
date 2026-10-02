@@ -46,6 +46,10 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 8)**
+- Fehler behoben: „Call to undefined function set_time_limit()“ beim Holen des Standbilds (Funktion ist in Symcon gesperrt)
+- FFmpeg-Aufruf weicht auf andere Wege aus, falls Symcon weitere PHP-Funktionen sperrt
+
 **Version 1.0 (Build 7)**
 - „Standbild jetzt holen“ zeigt sofort das Ergebnis bzw. den Grund, warum es nicht geklappt hat
 - FFmpeg läuft mit eigener Zeitgrenze (15 s) und kann nicht mehr hängen bleiben
