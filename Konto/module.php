@@ -24,6 +24,7 @@ class EZVIZKonto extends IPSModuleStrict
         $this->RegisterPropertyString('Server', EZVIZ::SERVER_STANDARD);
         $this->RegisterPropertyString('Code', '');
         $this->RegisterPropertyInteger('Intervall', 60);
+        $this->RegisterPropertyBoolean('Push', false);
 
         $this->RegisterAttributeString('FeatureCode', '');
         $this->RegisterAttributeString('SessionId', '');
@@ -35,6 +36,8 @@ class EZVIZKonto extends IPSModuleStrict
         $this->RegisterAttributeString('Cache', '{}');
         $this->RegisterAttributeInteger('Stand', 0);
         $this->RegisterAttributeString('LetzterFehler', '');
+        $this->RegisterAttributeString('UserId', '');
+        $this->RegisterAttributeString('PushServer', '');
 
         $this->RegisterTimer('Aktualisieren', 0, 'EZVIZ_RefreshAll($_IPS[\'TARGET\']);');
     }
@@ -59,20 +62,76 @@ class EZVIZKonto extends IPSModuleStrict
             $this->WriteAttributeString('FeatureCode', md5(uniqid('symcon', true) . random_bytes(8)));
         }
 
+        $this->PushInstanzPruefen();
+
         if (!$this->Pruefen()) {
             return;
         }
 
-        // Zugangsdaten oder Server geändert? Dann alte Sitzung verwerfen.
-        $Hash = md5($this->ReadPropertyString('EMail') . '|' . $this->ReadPropertyString('Passwort') . '|' . $this->ReadPropertyString('Server'));
-        if ($Hash !== $this->ReadAttributeString('LoginHash')) {
+        // Zugangsdaten, Server oder Push geändert? Dann alte Sitzung verwerfen.
+        if ($this->LoginHash() !== $this->ReadAttributeString('LoginHash')) {
             $this->SitzungLoeschen();
             $this->WriteAttributeString('ApiDomain', '');
+            $this->WriteAttributeString('PushServer', '');
         }
 
         $this->IntervallSetzen();
         if ($this->Verbinden()) {
             $this->Aktualisieren();
+        }
+    }
+
+    /**
+     * Zugangsdaten, Server und Push-Schalter – ändert sich etwas, ist eine neue Anmeldung nötig
+     * (Push braucht eine Anmeldung wie die Android-App).
+     */
+    private function LoginHash(): string
+    {
+        return md5($this->ReadPropertyString('EMail') . '|' . $this->ReadPropertyString('Passwort') . '|' . $this->ReadPropertyString('Server')
+            . ($this->ReadPropertyBoolean('Push') ? '|push' : ''));
+    }
+
+    /**
+     * Legt die Push-Instanz samt Client Socket an bzw. entfernt sie wieder.
+     */
+    private function PushInstanzPruefen(): void
+    {
+        $Vorhanden = 0;
+        foreach (IPS_GetInstanceListByModuleID(EZVIZ::MODUL_PUSH) as $ID) {
+            if ((int) IPS_GetProperty($ID, 'KontoID') === $this->InstanceID) {
+                $Vorhanden = $ID;
+                break;
+            }
+        }
+        $An = $this->ReadPropertyBoolean('Push') && $this->ReadPropertyBoolean('Aktiv');
+        if ($An && $Vorhanden === 0) {
+            $IO = IPS_CreateInstance(EZVIZ::CLIENT_SOCKET);
+            IPS_SetName($IO, 'EZVIZ Push Verbindung');
+            IPS_SetProperty($IO, 'Open', false);
+            IPS_ApplyChanges($IO);
+
+            $Push = IPS_CreateInstance(EZVIZ::MODUL_PUSH);
+            IPS_SetName($Push, 'EZVIZ Push (Sofort-Alarme)');
+            IPS_SetParent($Push, $this->InstanceID);
+            IPS_SetProperty($Push, 'KontoID', $this->InstanceID);
+            if (IPS_GetInstance($Push)['ConnectionID'] > 0) {
+                IPS_DisconnectInstance($Push);
+            }
+            IPS_ConnectInstance($Push, $IO);
+            IPS_ApplyChanges($Push);
+            $this->LogMessage('Push für Sofort-Alarme eingeschaltet (Instanz #' . $Push . ')', KL_MESSAGE);
+        } elseif (!$An && $Vorhanden > 0) {
+            $IO = IPS_GetInstance($Vorhanden)['ConnectionID'];
+            IPS_DeleteInstance($Vorhanden);
+            if ($IO > 0 && IPS_InstanceExists($IO)) {
+                $Kinder = array_filter(IPS_GetInstanceList(), function ($ID) use ($IO) {
+                    return IPS_GetInstance($ID)['ConnectionID'] == $IO;
+                });
+                if (!count($Kinder)) {
+                    IPS_DeleteInstance($IO);
+                }
+            }
+            $this->LogMessage('Push für Sofort-Alarme ausgeschaltet', KL_MESSAGE);
         }
     }
 
@@ -201,6 +260,64 @@ class EZVIZKonto extends IPSModuleStrict
             $Zeilen[] = 'Laufende Skripte: ' . count($Laufend) . (count($Laufend) ? "\n" . implode("\n", array_slice($Laufend, 0, 15)) : '');
         }
         return 'Jetzt ' . date('H:i:s') . "\n" . (count($Zeilen) ? implode("\n", $Zeilen) : 'Keine Timer gefunden');
+    }
+
+    /**
+     * Für die Push-Instanz: meldet den Push-Kanal bei EZVIZ an und liefert die Zugangsdaten.
+     * Ergebnis: ['Success', 'Error', 'Serial', 'Session', 'Host', 'Port']
+     */
+    public function GetPushInfo(): array
+    {
+        $Fehler = function (string $Text): array {
+            return ['Success' => false, 'Error' => $Text];
+        };
+        if (!$this->ReadPropertyBoolean('Push')) {
+            return $Fehler('Push ist im Konto ausgeschaltet');
+        }
+        if (!$this->Pruefen() || !$this->Verbinden(true)) {
+            return $Fehler('Konto ist nicht angemeldet');
+        }
+        // Ältere Anmeldung ohne Benutzer-ID: einmal neu anmelden
+        if ($this->ReadAttributeString('UserId') === '') {
+            $this->SitzungLoeschen();
+            if (!$this->Anmelden()) {
+                return $Fehler('Neue Anmeldung fehlgeschlagen');
+            }
+        }
+        $Server = json_decode($this->ReadAttributeString('PushServer'), true);
+        if (!is_array($Server) || empty($Server['Host'])) {
+            $Result = $this->Anfrage('GET', EZVIZ::SERVER_INFO);
+            $Info = is_array($Result['Data']) ? ($Result['Data']['systemConfigInfo'] ?? []) : [];
+            if (!$Result['Success'] || empty($Info['pushDasDomain'])) {
+                return $Fehler('Push-Server unbekannt: ' . $Result['Error']);
+            }
+            $Server = ['Host' => (string) $Info['pushDasDomain'], 'Port' => (int) ($Info['pushDasPort'] ?? 8666)];
+            $this->WriteAttributeString('PushServer', json_encode($Server));
+        }
+        $Result = $this->Anfrage('PUT', EZVIZ::PUSH_TOKEN, [
+            'pushRegisterJson' => EZVIZ::PUSH_REGISTER_JSON,
+            'pushExtJson'      => EZVIZ::PUSH_EXT_JSON
+        ]);
+        if (!$Result['Success']) {
+            return $Fehler('Push-Anmeldung abgelehnt: ' . $Result['Error']);
+        }
+        return [
+            'Success' => true,
+            'Error'   => '',
+            'Serial'  => 'MOBILE:ys7:' . $this->ReadAttributeString('UserId') . ':' . $this->ReadAttributeString('FeatureCode'),
+            'Session' => $this->ReadAttributeString('SessionId'),
+            'Host'    => $Server['Host'],
+            'Port'    => $Server['Port']
+        ];
+    }
+
+    /**
+     * Für die Push-Instanz: gleich neu abfragen (z. B. nach einem Push-Alarm).
+     * Kehrt sofort zurück – der Abruf läuft über den Timer.
+     */
+    public function RefreshSoon(): void
+    {
+        $this->SetTimerInterval('Aktualisieren', 300);
     }
 
     /**
@@ -496,6 +613,10 @@ class EZVIZKonto extends IPSModuleStrict
         if ($MitCode) {
             $Form['smsCode'] = $Code;
         }
+        if ($this->ReadPropertyBoolean('Push')) {
+            $Form['pushRegisterJson'] = EZVIZ::PUSH_REGISTER_JSON;
+            $Form['pushExtJson'] = EZVIZ::PUSH_EXT_JSON;
+        }
 
         $this->SendDebug('Anmelden', $this->ReadPropertyString('EMail') . ' @ ' . $this->ApiDomain() . ($MitCode ? ' (mit Bestätigungscode)' : ''), 0);
         $Result = $this->Http('POST', 'https://' . $this->ApiDomain() . EZVIZ::LOGIN, [], $Form);
@@ -509,7 +630,8 @@ class EZVIZKonto extends IPSModuleStrict
             if (!empty($D['loginArea']['apiDomain'])) {
                 $this->WriteAttributeString('ApiDomain', (string) $D['loginArea']['apiDomain']);
             }
-            $this->WriteAttributeString('LoginHash', md5($this->ReadPropertyString('EMail') . '|' . $this->ReadPropertyString('Passwort') . '|' . $this->ReadPropertyString('Server')));
+            $this->WriteAttributeString('LoginHash', $this->LoginHash());
+            $this->WriteAttributeString('UserId', (string) ($D['loginUser']['userId'] ?? ''));
             if ($MitCode) {
                 $this->WriteAttributeString('CodeVerwendet', $Code);
             }
@@ -572,7 +694,7 @@ class EZVIZKonto extends IPSModuleStrict
         $Result = $this->Http('PUT', 'https://' . $this->ApiDomain() . EZVIZ::SESSION_ERNEUERN, [], [
             'refreshSessionId' => $this->ReadAttributeString('RefreshId'),
             'featureCode'      => $this->ReadAttributeString('FeatureCode')
-        ]);
+        ] + ($this->ReadPropertyBoolean('Push') ? ['pushRegisterJson' => EZVIZ::PUSH_REGISTER_JSON, 'pushExtJson' => EZVIZ::PUSH_EXT_JSON] : []));
         $D = $Result['Data'];
         if ($Result['Code'] == 200 && EZVIZ::ApiOk($D) && isset($D['sessionInfo']['sessionId'])) {
             $this->WriteAttributeString('SessionId', (string) $D['sessionInfo']['sessionId']);
@@ -652,12 +774,12 @@ class EZVIZKonto extends IPSModuleStrict
             'Accept: application/json',
             'featureCode: ' . $this->ReadAttributeString('FeatureCode'),
             'clientType: 3',
-            'osVersion: ',
-            'clientVersion: ',
+            'osVersion: ' . ($this->ReadPropertyBoolean('Push') ? '13' : ''),
+            'clientVersion: ' . ($this->ReadPropertyBoolean('Push') ? '7.4.1.0421' : ''),
             'netType: WIFI',
             'customno: 1000001',
             'ssid: ',
-            'clientNo: web_site',
+            'clientNo: ' . ($this->ReadPropertyBoolean('Push') ? 'google' : 'web_site'),
             'appId: ys7',
             'language: de_DE',
             'lang: de',

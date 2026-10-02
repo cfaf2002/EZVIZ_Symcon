@@ -53,7 +53,7 @@
     .laedt { position: absolute; right: 10px; bottom: 10px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: dreh 0.8s linear infinite; display: none; }
     .laedt.an { display: block; }
     @keyframes dreh { to { transform: rotate(360deg); } }
-    .knoepfe { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
     .knopf { border: 1px solid var(--ez-rand); background: var(--ez-flaeche); color: inherit; border-radius: 10px; height: 38px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
     .knopf:hover { background: var(--ez-flaeche-hover); }
     .knopf:active { transform: scale(0.97); }
@@ -84,6 +84,7 @@
         <button class="knopf" onclick="aktion('bild')">⟳ Bild</button>
         <button class="knopf" id="schutz" onclick="aktion('schutz')">Erkennung</button>
         <button class="knopf" id="schlaf" onclick="aktion('schlaf')">Schlafmodus</button>
+        <button class="knopf" id="licht" onclick="aktion('licht')" hidden>💡 Licht</button>
     </div>
 </div>
 
@@ -139,6 +140,9 @@
         if (ezviz.schlaf && !ezviz.bild) {
             document.getElementById('leer').textContent = 'Kamera im Schlafmodus';
         }
+        var licht = document.getElementById('licht');
+        licht.hidden = !ezviz.hatLicht;
+        licht.classList.toggle('an', !!ezviz.licht);
         var akku = document.getElementById('akku');
         var hatAkku = ezviz.akku !== null && ezviz.akku !== undefined;
         akku.classList.toggle('da', hatAkku);

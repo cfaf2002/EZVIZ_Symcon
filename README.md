@@ -11,6 +11,7 @@ Bindet EZVIZ-Kameras (z. B. C8C) in IP-Symcon ein: Status, Bewegungserkennung, S
 | [EZVIZ Konto](Konto/README.md) | I/O | Anmeldung am EZVIZ-Konto, Sitzung, regelmäßige Abfrage aller Geräte und Alarme |
 | [EZVIZ Konfigurator](Konfigurator/README.md) | Konfigurator | Legt die Kameras des Kontos als Instanzen an |
 | [EZVIZ Kamera](Kamera/README.md) | Gerät | Eine Kamera mit Variablen, Schaltern, Alarmbild und Livestream |
+| [EZVIZ Push](Push/README.md) | Gerät | Sofort-Alarme über den Push-Kanal (wird vom Konto automatisch angelegt) |
 
 ## Voraussetzungen
 
@@ -32,6 +33,7 @@ EZVIZ Kamera        ─┐
 EZVIZ Kamera        ─┼──►  EZVIZ Konto  ──►  EZVIZ-Cloud
 EZVIZ Konfigurator  ─┘
 (Konto meldet neue Daten über die Variable „Letzter Abruf“, die Kameras holen sie dann selbst ab)
+EZVIZ Push ── Client Socket ──► EZVIZ-Push-Server   (bei Alarm: Konto fragt sofort ab)
 EZVIZ Kamera  ───── RTSP (lokal) ─────────►  Kamera
 ```
 
@@ -44,8 +46,16 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 | EZVIZ Konto | EZVIZ | {7FD1051B-31F1-4C81-92B4-39D96ED1D346} |
 | EZVIZ Konfigurator | EZVIZ | {D256E72C-D0FF-4536-97B6-FB6929356BA4} |
 | EZVIZ Kamera | EZVIZ | {C4BCA507-8306-4DC3-B7B0-648BEED24442} |
+| EZVIZ Push | EZVIZ | {B4259050-5300-47D8-9DAD-271C4AF28621} |
 
 ## Changelog
+
+**Version 1.0 (Build 21)**
+- Neu: Sofort-Alarme per Push (Schalter im Konto) – eigene Instanz „EZVIZ Push“ wird automatisch angelegt
+- Neu: Bewegungsmeldung an die Visualisierung (Schalter je Kamera, mit Mindestabstand zwischen Meldungen)
+- Neu: Lichtsteuerung für Licht-Kameras wie LC3 (Schalter je Kamera): Variable „Licht“, Regler „Helligkeit“, Knopf in der Kachel
+- Fehler behoben: „Output-Buffer exceeds Limit“ in der Kachel – Bilder werden für die Kachel verkleinert, das Medienobjekt behält die volle Auflösung
+- Aufgeräumt: Fehlersuch-Knöpfe im eingeklappten Bereich „Fehlersuche“, Benachrichtigungen in einem Bereich zusammengefasst, „Meldung testen“ statt „Akku-Meldung testen“, alter Code entfernt
 
 **Version 1.0 (Build 20)**
 - Bemerkung ist jetzt ein Feld in der Kamera-Instanz (unter dem Verifizierungscode) statt in der Kachel; die Variable „Bemerkung“ und EZVIZ_SetNote entfallen

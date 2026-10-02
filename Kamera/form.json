@@ -188,9 +188,36 @@
         },
         {
             "type": "ExpansionPanel",
-            "caption": "Akku (nur Akku-Kameras)",
+            "caption": "Benachrichtigungen",
             "expanded": false,
             "items": [
+                {
+                    "type": "SelectInstance",
+                    "name": "VisuID",
+                    "caption": "Visualisierung für Meldungen",
+                    "width": "350px"
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "BewegungMeldung",
+                    "caption": "Bei Bewegung eine Meldung senden"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "BewegungPause",
+                    "caption": "Höchstens eine Bewegungsmeldung alle",
+                    "suffix": "Sekunden",
+                    "minimum": 0
+                },
+                {
+                    "type": "Label",
+                    "caption": "Die Meldung kommt in der Visualisierung und als Push aufs Handy; Antippen öffnet die Kamera. Mit „Alarme sofort per Push empfangen“ im Konto kommt sie ohne Verzögerung."
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "AkkuMeldung",
+                    "caption": "Bei schwachem Akku eine Meldung senden (nur Akku-Kameras)"
+                },
                 {
                     "type": "NumberSpinner",
                     "name": "AkkuGrenze",
@@ -198,21 +225,22 @@
                     "suffix": "% (0 = keine Warnung)",
                     "minimum": 0,
                     "maximum": 100
-                },
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Licht (Licht-Kameras wie LC3)",
+            "expanded": false,
+            "items": [
                 {
                     "type": "CheckBox",
-                    "name": "AkkuMeldung",
-                    "caption": "Meldung an die Visualisierung senden"
-                },
-                {
-                    "type": "SelectInstance",
-                    "name": "VisuID",
-                    "caption": "Visualisierung",
-                    "width": "350px"
+                    "name": "LichtSteuerung",
+                    "caption": "Licht steuern (Schalter „Licht“, Regler „Helligkeit“ und Knopf in der Kachel)"
                 },
                 {
                     "type": "Label",
-                    "caption": "Die Meldung kommt einmal, wenn der Akku die Grenze erreicht, und erst wieder, nachdem er geladen wurde (5 % über der Grenze). Sie erscheint in den Benachrichtigungen der Visualisierung und als Push auf den angemeldeten Handys; Antippen öffnet die Kamera. Zusätzlich steht sie im Meldungsfenster, und die Kachel zeigt einen roten Hinweis."
+                    "caption": "Nur für Kameras mit eingebautem Licht. Ersetzt den Schalter „Alarmlicht“."
                 }
             ]
         },
@@ -259,19 +287,26 @@
             "onClick": "EZVIZ_UpdateSnapshot($id); echo EZVIZ_GetSnapshotStatus($id);"
         },
         {
-            "type": "Button",
-            "caption": "Akku-Meldung testen",
-            "onClick": "echo EZVIZ_TestBatteryNotification($id) ? 'Test-Meldung gesendet.' : 'Bitte zuerst unter „Akku“ eine Visualisierung auswählen und übernehmen.';"
-        },
-        {
-            "type": "Button",
-            "caption": "Stream-Adresse anzeigen",
-            "onClick": "$u = EZVIZ_GetStreamUrl($id); echo $u !== '' ? $u : 'IP-Adresse noch unbekannt.';"
-        },
-        {
-            "type": "Button",
-            "caption": "Timer prüfen",
-            "onClick": "echo EZVIZ_GetTimerInfo($id);"
+            "type": "ExpansionPanel",
+            "caption": "Fehlersuche",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "Button",
+                    "caption": "Meldung testen",
+                    "onClick": "echo EZVIZ_TestNotification($id) ? 'Test-Meldung gesendet.' : 'Nicht gesendet – unter „Benachrichtigungen“ eine Visualisierung auswählen und übernehmen.';"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Stream-Adresse anzeigen",
+                    "onClick": "$u = EZVIZ_GetStreamUrl($id); echo $u !== '' ? $u : 'IP-Adresse noch unbekannt.';"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Timer prüfen",
+                    "onClick": "echo EZVIZ_GetTimerInfo($id);"
+                }
+            ]
         }
     ],
     "status": [

@@ -1,0 +1,44 @@
+{
+    "elements": [
+        {
+            "type": "SelectInstance",
+            "name": "KontoID",
+            "caption": "EZVIZ Konto",
+            "width": "350px"
+        },
+        {
+            "type": "Label",
+            "caption": "Diese Instanz wird vom Konto automatisch angelegt und entfernt (Schalter „Alarme sofort per Push empfangen“ im Konto). Hier muss nichts eingestellt werden."
+        }
+    ],
+    "actions": [
+        {
+            "type": "Label",
+            "caption": "Status: unbekannt"
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Fehlersuche",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "Button",
+                    "caption": "Push-Verbindung neu aufbauen",
+                    "onClick": "EZVIZ_PushStart($id); echo 'Neuaufbau gestartet – Status in einigen Sekunden prüfen.';"
+                }
+            ]
+        }
+    ],
+    "status": [
+        {
+            "code": 102,
+            "icon": "active",
+            "caption": "Verbunden – Alarme kommen sofort"
+        },
+        {
+            "code": 208,
+            "icon": "error",
+            "caption": "Push-Verbindung gestört – Details unter „Status“, neuer Versuch läuft automatisch"
+        }
+    ]
+}

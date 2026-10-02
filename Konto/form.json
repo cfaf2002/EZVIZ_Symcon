@@ -57,8 +57,17 @@
         {
             "type": "ExpansionPanel",
             "caption": "Abfrage",
-            "expanded": false,
+            "expanded": true,
             "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "Push",
+                    "caption": "Alarme sofort per Push empfangen (statt nur alle 60 Sekunden)"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Legt automatisch die Instanz „EZVIZ Push (Sofort-Alarme)“ unter dem Konto an. Beim Einschalten meldet sich das Konto einmal neu an – ggf. kommt ein Bestätigungscode."
+                },
                 {
                     "type": "NumberSpinner",
                     "name": "Intervall",
@@ -96,9 +105,16 @@
             "onClick": "echo EZVIZ_RefreshAll($id) ? count(EZVIZ_GetDevices($id)) . ' Geräte abgefragt.' : 'Abfrage fehlgeschlagen. Details im Debug.';"
         },
         {
-            "type": "Button",
-            "caption": "Timer prüfen",
-            "onClick": "echo EZVIZ_GetTimerInfo($id);"
+            "type": "ExpansionPanel",
+            "caption": "Fehlersuche",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "Button",
+                    "caption": "Timer prüfen",
+                    "onClick": "echo EZVIZ_GetTimerInfo($id);"
+                }
+            ]
         }
     ],
     "status": [

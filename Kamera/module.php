@@ -54,6 +54,9 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyInteger('AkkuGrenze', 20);
         $this->RegisterPropertyBoolean('AkkuMeldung', true);
         $this->RegisterPropertyInteger('VisuID', 0);
+        $this->RegisterPropertyBoolean('BewegungMeldung', false);
+        $this->RegisterPropertyInteger('BewegungPause', 120);
+        $this->RegisterPropertyBoolean('LichtSteuerung', false);
 
         $this->RegisterAttributeString('Daten', '');
         $this->RegisterAttributeString('AlarmId', '');
@@ -63,6 +66,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeInteger('StandbildZeit', 0);
         $this->RegisterAttributeInteger('LokalPause', 0);
         $this->RegisterAttributeBoolean('AkkuGemeldet', false);
+        $this->RegisterAttributeInteger('BewegungGemeldet', 0);
         $this->RegisterAttributeString('StandbildFehler', '');
         $this->RegisterAttributeString('StandbildWeg', '');
         $this->RegisterAttributeInteger('LetzterLauf', 0);
@@ -182,13 +186,7 @@ class EZVIZKamera extends IPSModuleStrict
 
     public function ReceiveData(string $JSONString): string
     {
-        $Data = json_decode($JSONString, true);
-        if (!is_array($Data) || ($Data['Serial'] ?? '') !== trim($this->ReadPropertyString('Serial'))) {
-            return '';
-        }
-        if (($Data['Typ'] ?? '') === 'Status' && is_array($Data['Daten'] ?? null)) {
-            $this->Verarbeiten($Data['Daten'], true);
-        }
+        // Daten holt sich die Kamera selbst beim Konto (siehe AbrufBeobachten)
         return '';
     }
 
@@ -214,7 +212,6 @@ class EZVIZKamera extends IPSModuleStrict
                 }
                 break;
             case 'StandbildTimer':
-            case 'Standbild':
                 $this->WriteAttributeInteger('LetzterLauf', time());
                 $this->StandbildTimer();
                 $this->UpdateSnapshot();
@@ -225,6 +222,12 @@ class EZVIZKamera extends IPSModuleStrict
                 break;
             case 'Kachel':
                 $this->KachelAktion((string) $Value);
+                break;
+            case 'Licht':
+                $this->SetLight((bool) $Value);
+                break;
+            case 'Helligkeit':
+                $this->SetBrightness((int) $Value);
                 break;
             case 'BewegungAus':
                 $this->SetTimerInterval('BewegungAus', 0);
@@ -321,6 +324,34 @@ class EZVIZKamera extends IPSModuleStrict
             return false;
         }
         $this->Setzen('Schalter' . $Typ, $Aktiv);
+        return true;
+    }
+
+    /**
+     * Licht der Kamera ein-/ausschalten (Licht-Kameras wie LC3).
+     */
+    public function SetLight(bool $An): bool
+    {
+        if (!$this->SetSwitch(303, $An)) {
+            return false;
+        }
+        $this->Setzen('Licht', $An);
+        $this->KachelSenden();
+        return true;
+    }
+
+    /**
+     * Helligkeit des Lichts in Prozent (1–100).
+     */
+    public function SetBrightness(int $Prozent): bool
+    {
+        $Prozent = max(1, min(100, $Prozent));
+        $Result = $this->Senden('POST', '/v3/alarms/device/alarmLight/' . $this->Serial() . '/1', ['luminance' => $Prozent]);
+        if (!$Result['Success']) {
+            $this->Fehler('Helligkeit', $Result);
+            return false;
+        }
+        $this->Setzen('Helligkeit', $Prozent);
         return true;
     }
 
@@ -556,8 +587,8 @@ class EZVIZKamera extends IPSModuleStrict
     public function GetVisualizationTile(): string
     {
         $HTML = file_get_contents(__DIR__ . '/module.html');
-        $Daten = json_encode($this->KachelDaten(true), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-        return $HTML . '<script>handleMessage(' . json_encode($Daten, JSON_HEX_TAG) . ');</script>';
+        $Daten = json_encode($this->KachelDaten(true), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
+        return $HTML . '<script>handleMessage(' . json_encode($Daten, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES) . ');</script>';
     }
 
     /**
@@ -624,6 +655,11 @@ class EZVIZKamera extends IPSModuleStrict
             if (!isset(EZVIZ::SCHALTER[$Typ])) {
                 continue;
             }
+            if ($Typ === 303 && $this->ReadPropertyBoolean('LichtSteuerung')) {
+                // Das Licht steuert dann die Variable „Licht“
+                $this->Setzen('Licht', (bool) ($S['enable'] ?? false));
+                continue;
+            }
             $Ident = 'Schalter' . $Typ;
             if (!@$this->GetIDForIdent($Ident)) {
                 [, $Name, $Icon] = EZVIZ::SCHALTER[$Typ];
@@ -631,6 +667,11 @@ class EZVIZKamera extends IPSModuleStrict
                 $this->EnableAction($Ident);
             }
             $this->Setzen($Ident, (bool) ($S['enable'] ?? false));
+        }
+
+        // Helligkeit des Lichts (Licht-Kameras wie LC3)
+        if ($this->ReadPropertyBoolean('LichtSteuerung') && isset($Optionen['Alarm_Light']['luminance']) && is_numeric($Optionen['Alarm_Light']['luminance'])) {
+            $this->Setzen('Helligkeit', max(1, min(100, (int) $Optionen['Alarm_Light']['luminance'])));
         }
 
         // Schwenken (nur bei Schwenk-/Neigekameras)
@@ -720,6 +761,10 @@ class EZVIZKamera extends IPSModuleStrict
             $this->Setzen('Bewegung', true);
             $Rest = $Erster ? max(5, $Dauer - $Alter) : $Dauer;
             $this->SetTimerInterval('BewegungAus', $Rest * 1000);
+            // Meldung nur für frische Alarme (nicht für alte nach Neustart)
+            if ($Alter < 600) {
+                $this->BewegungMelden((string) ($A['text'] ?? ''), $Zeit);
+            }
         }
 
         if ($this->ReadPropertyBoolean('Alarmbild') && (string) ($A['bild'] ?? '') !== '') {
@@ -1055,7 +1100,9 @@ class EZVIZKamera extends IPSModuleStrict
             'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit'),
             'bildArt'    => 'Standbild',
             'fehler'     => '',
-            'intervall'  => (int) ($this->AutoIntervall()[0] / 1000)
+            'intervall'  => (int) ($this->AutoIntervall()[0] / 1000),
+            'hatLicht'   => $this->ReadPropertyBoolean('LichtSteuerung'),
+            'licht'      => (bool) $Wert('Licht', false)
         ];
         // Das neuere Bild wählen (Standbild oder Alarmbild) – Zeit und Art immer mitschicken,
         // den Bildinhalt nur bei Bedarf
@@ -1077,7 +1124,7 @@ class EZVIZKamera extends IPSModuleStrict
                 if ($Inhalt === '') {
                     continue;
                 }
-                $K['bild'] = $Inhalt;
+                $K['bild'] = $this->KachelBild($Inhalt);
             }
             $K['bildZeit'] = $Zeit;
             $K['bildArt'] = $Ident;
@@ -1092,10 +1139,42 @@ class EZVIZKamera extends IPSModuleStrict
         return $K;
     }
 
+    /**
+     * Verkleinert ein Bild für die Kachel (Symcon erlaubt dort höchstens 1 MB).
+     * Das gespeicherte Medienobjekt behält die volle Auflösung.
+     */
+    private function KachelBild(string $Base64): string
+    {
+        if (strlen($Base64) <= 350000 || !function_exists('imagecreatefromstring')) {
+            return strlen($Base64) <= 900000 ? $Base64 : '';
+        }
+        $Quelle = @imagecreatefromstring((string) base64_decode($Base64));
+        if ($Quelle === false) {
+            return strlen($Base64) <= 900000 ? $Base64 : '';
+        }
+        $B = imagesx($Quelle);
+        $H = imagesy($Quelle);
+        foreach ([[1280, 80], [960, 72], [640, 65]] as [$Breite, $Qualitaet]) {
+            $Ziel = $Quelle;
+            if ($B > $Breite) {
+                $NeuH = (int) round($H * $Breite / $B);
+                $Ziel = imagecreatetruecolor($Breite, $NeuH);
+                imagecopyresampled($Ziel, $Quelle, 0, 0, 0, 0, $Breite, $NeuH, $B, $H);
+            }
+            ob_start();
+            imagejpeg($Ziel, null, $Qualitaet);
+            $Neu = base64_encode((string) ob_get_clean());
+            if (strlen($Neu) <= 350000) {
+                return $Neu;
+            }
+        }
+        return strlen($Neu) <= 900000 ? $Neu : '';
+    }
+
     private function KachelSenden(bool $MitBild = false): void
     {
         if ($this->ReadPropertyBoolean('Kachel')) {
-            $this->UpdateVisualizationValue(json_encode($this->KachelDaten($MitBild)));
+            $this->UpdateVisualizationValue(json_encode($this->KachelDaten($MitBild), JSON_UNESCAPED_SLASHES));
         }
     }
 
@@ -1121,6 +1200,12 @@ class EZVIZKamera extends IPSModuleStrict
             case 'schutz':
                 $this->SetMotionDetection(!(bool) GetValue($this->GetIDForIdent('Bewegungserkennung')));
                 break;
+            case 'licht':
+                if ($this->ReadPropertyBoolean('LichtSteuerung')) {
+                    $ID = @$this->GetIDForIdent('Licht');
+                    $this->SetLight(!($ID && GetValue($ID)));
+                }
+                return;
             case 'schlaf':
                 if (@$this->GetIDForIdent('Schalter21')) {
                     $this->SetSwitch(21, !$this->Schlaeft());
@@ -1171,33 +1256,57 @@ class EZVIZKamera extends IPSModuleStrict
         if (!$this->ReadPropertyBoolean('AkkuMeldung')) {
             return;
         }
-        $Visu = $this->ReadPropertyInteger('VisuID');
-        if ($Visu <= 0 || !IPS_InstanceExists($Visu)) {
-            $this->SendDebug('Akku', 'Keine Visualisierung für die Meldung ausgewählt', 0);
-            return;
-        }
-        $Titel = mb_substr('Akku schwach: ' . $Name, 0, 32);
-        if (function_exists('VISU_PostNotification')) {
-            // Antippen öffnet die Kamera; liegt sie nicht in der Visualisierung, ohne Ziel senden
-            $Ok = @VISU_PostNotification($Visu, $Titel, $Text, 'Warning', $this->InstanceID);
-            if ($Ok === false) {
-                $Ok = @VISU_PostNotification($Visu, $Titel, $Text, 'Warning', 0);
-            }
-            $this->SendDebug('Akku', 'Meldung an Visualisierung ' . ($Ok !== false ? 'gesendet' : 'fehlgeschlagen'), 0);
-        } elseif (function_exists('WFC_PushNotification')) {
-            @WFC_PushNotification($Visu, $Titel, $Text, '', $this->InstanceID);
-            $this->SendDebug('Akku', 'Meldung an WebFront gesendet', 0);
-        }
+        $this->VisuMelden(mb_substr('Akku schwach: ' . $Name, 0, 32), $Text);
     }
 
     /**
-     * Schickt eine Test-Meldung „Akku schwach“ an die ausgewählte Visualisierung.
+     * Meldung „Bewegung erkannt“ an die Visualisierung (wenn eingeschaltet).
      */
-    public function TestBatteryNotification(): bool
+    private function BewegungMelden(string $Art, int $Zeit): void
     {
-        $ID = @$this->GetIDForIdent('Akku');
-        $this->AkkuMelden($ID ? (int) GetValue($ID) : $this->ReadPropertyInteger('AkkuGrenze'));
-        return $this->ReadPropertyInteger('VisuID') > 0;
+        if (!$this->ReadPropertyBoolean('BewegungMeldung')) {
+            return;
+        }
+        $Pause = max(0, $this->ReadPropertyInteger('BewegungPause'));
+        if (time() - $this->ReadAttributeInteger('BewegungGemeldet') < $Pause) {
+            $this->SendDebug('Bewegung', 'Meldung unterdrückt (Pause)', 0);
+            return;
+        }
+        $this->WriteAttributeInteger('BewegungGemeldet', time());
+        $Name = IPS_GetName($this->InstanceID);
+        $Text = ($Art !== '' ? $Art : 'Bewegung erkannt') . ' um ' . date('H:i', $Zeit ?: time()) . ' Uhr';
+        $this->VisuMelden(mb_substr('Bewegung: ' . $Name, 0, 32), $Text);
+    }
+
+    /**
+     * Schickt eine Benachrichtigung an die ausgewählte Visualisierung (Antippen öffnet die Kamera).
+     */
+    private function VisuMelden(string $Titel, string $Text): bool
+    {
+        $Visu = $this->ReadPropertyInteger('VisuID');
+        if ($Visu <= 0 || !IPS_InstanceExists($Visu)) {
+            $this->SendDebug('Meldung', 'Keine Visualisierung ausgewählt', 0);
+            return false;
+        }
+        $Ok = false;
+        if (function_exists('VISU_PostNotification')) {
+            $Ok = @VISU_PostNotification($Visu, $Titel, $Text, 'Info', $this->InstanceID);
+            if ($Ok === false) {
+                $Ok = @VISU_PostNotification($Visu, $Titel, $Text, 'Info', 0);
+            }
+        } elseif (function_exists('WFC_PushNotification')) {
+            $Ok = @WFC_PushNotification($Visu, $Titel, $Text, '', $this->InstanceID);
+        }
+        $this->SendDebug('Meldung', $Titel . ': ' . $Text . ' – ' . ($Ok !== false ? 'gesendet' : 'fehlgeschlagen'), 0);
+        return $Ok !== false;
+    }
+
+    /**
+     * Schickt eine Test-Meldung an die ausgewählte Visualisierung.
+     */
+    public function TestNotification(): bool
+    {
+        return $this->VisuMelden(mb_substr('Test: ' . IPS_GetName($this->InstanceID), 0, 32), 'Testmeldung vom EZVIZ-Modul – Meldungen kommen an.');
     }
 
     private function LivestreamAktualisieren(): void
@@ -1271,6 +1380,26 @@ class EZVIZKamera extends IPSModuleStrict
         $this->EnableAction('Aktualisieren');
 
         $this->RegisterVariableInteger('Zeitpunkt', 'Letzte Aktualisierung', $Datum + ['ICON' => 'clock'], 51);
+
+        // Lichtsteuerung (Licht-Kameras wie LC3)
+        if ($this->ReadPropertyBoolean('LichtSteuerung')) {
+            $this->RegisterVariableBoolean('Licht', 'Licht', ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'ICON' => 'lightbulb'], 7);
+            $this->EnableAction('Licht');
+            $Regler = defined('VARIABLE_PRESENTATION_SLIDER')
+                ? ['PRESENTATION' => VARIABLE_PRESENTATION_SLIDER, 'MIN' => 1, 'MAX' => 100, 'STEP_SIZE' => 1, 'SUFFIX' => ' %', 'ICON' => 'sun']
+                : ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'SUFFIX' => ' %', 'ICON' => 'sun'];
+            $this->RegisterVariableInteger('Helligkeit', 'Helligkeit', $Regler, 8);
+            $this->EnableAction('Helligkeit');
+            if (@$this->GetIDForIdent('Schalter303')) {
+                $this->UnregisterVariable('Schalter303');
+            }
+        } else {
+            foreach (['Licht', 'Helligkeit'] as $Ident) {
+                if (@$this->GetIDForIdent($Ident)) {
+                    $this->UnregisterVariable($Ident);
+                }
+            }
+        }
 
         // Bemerkung ist jetzt eine Einstellung der Instanz – frühere Variable entfernen
         if (@$this->GetIDForIdent('Bemerkung')) {

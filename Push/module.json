@@ -1,0 +1,18 @@
+{
+    "id": "{B4259050-5300-47D8-9DAD-271C4AF28621}",
+    "name": "EZVIZ Push",
+    "type": 3,
+    "vendor": "EZVIZ",
+    "aliases": [
+        "EZVIZ Push (Sofort-Alarme)"
+    ],
+    "parentRequirements": [
+        "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}"
+    ],
+    "childRequirements": [],
+    "implemented": [
+        "{018EF6B5-AB94-40C6-AA53-46943E824ACF}"
+    ],
+    "prefix": "EZVIZ",
+    "url": "https://github.com/cfaf2002/EZVIZ_Symcon/blob/main/Push/README.md"
+}

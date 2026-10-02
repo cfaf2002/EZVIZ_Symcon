@@ -17,6 +17,18 @@ class EZVIZ
     public const MODUL_KONTO = '{7FD1051B-31F1-4C81-92B4-39D96ED1D346}';
     public const MODUL_KONFIGURATOR = '{D256E72C-D0FF-4536-97B6-FB6929356BA4}';
     public const MODUL_KAMERA = '{C4BCA507-8306-4DC3-B7B0-648BEED24442}';
+    public const MODUL_PUSH = '{B4259050-5300-47D8-9DAD-271C4AF28621}';
+
+    // Symcon Client Socket und dessen Datenfluss
+    public const CLIENT_SOCKET = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';
+    public const DATA_TO_IO = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
+    public const DATA_FROM_IO = '{018EF6B5-AB94-40C6-AA53-46943E824ACF}';
+
+    // Push (Sofort-Alarme) – Anmeldung wie die Android-App
+    public const PUSH_TOKEN = '/v3/push/token';
+    public const SERVER_INFO = '/v3/configurations/system/info';
+    public const PUSH_REGISTER_JSON = '[{"channel":99}]';
+    public const PUSH_EXT_JSON = '{"language":"","protoVer":"2"}';
 
     // Schnittstelle (EZVIZ-App, inoffiziell)
     public const SERVER_STANDARD = 'apiieu.ezvizlife.com';
@@ -42,6 +54,7 @@ class EZVIZ
     public const STATUS_KEINE_SERIENNUMMER = 205;
     public const STATUS_CODE_NOETIG = 206;
     public const STATUS_NICHT_GEFUNDEN = 207;
+    public const STATUS_PUSH_FEHLER = 208;
 
     /**
      * Schalter der Kameras (Typnummer => [Ident-Name, Anzeigename, Icon]).
@@ -159,5 +172,74 @@ class EZVIZ
             $Ergebnis .= $Klar;
         }
         return $Ergebnis;
+    }
+    // ------------------------------------------------------------------
+    // Push: Verschlüsselung und Rahmen des EZVIZ-Push-Kanals ("channel 99")
+    // ------------------------------------------------------------------
+
+    public static function PushFrame(int $Befehl, string $Daten): string
+    {
+        $Laenge = strlen($Daten);
+        $Kopf = chr($Befehl << 4);
+        do {
+            $Ziffer = $Laenge & 127;
+            $Laenge >>= 7;
+            $Kopf .= chr($Ziffer | ($Laenge > 0 ? 128 : 0));
+        } while ($Laenge > 0);
+        return $Kopf . $Daten;
+    }
+
+    public static function PushShareKey(string $Code, string $Serial): string
+    {
+        $Erst = strtoupper(md5($Code . $Serial));
+        $Zweit = strtoupper(md5($Erst . 'www.88075998.com'));
+        return strtoupper(md5($Zweit));
+    }
+
+    public static function PushMasterKey(string $Zufall4, string $Shared): string
+    {
+        return strtoupper(bin2hex(substr(hash('sha384', $Zufall4 . $Shared, true), 0, 8)));
+    }
+
+    public static function PushSignatur(string $Daten, string $Schluessel): string
+    {
+        return hash_hmac('sha256', hash('sha256', $Daten, true), $Schluessel, true);
+    }
+
+    public static function PushVerschluesseln(string $Schluessel, string $Text): string
+    {
+        return (string) openssl_encrypt($Text, 'AES-128-CBC', $Schluessel, OPENSSL_RAW_DATA, '01234567' . str_repeat("\0", 8));
+    }
+
+    public static function PushEntschluesseln(string $Schluessel, string $Daten): ?string
+    {
+        if ($Daten === '' || strlen($Daten) % 16) {
+            return null;
+        }
+        $Text = openssl_decrypt($Daten, 'AES-128-CBC', $Schluessel, OPENSSL_RAW_DATA, '01234567' . str_repeat("\0", 8));
+        return $Text === false ? null : $Text;
+    }
+
+    /**
+     * MQTT-Text: 2 Byte Länge + Inhalt
+     */
+    public static function MqttText(string $Text): string
+    {
+        return pack('n', strlen($Text)) . $Text;
+    }
+
+    /**
+     * MQTT-Paket mit festem Kopf (Restlänge als variable Zahl).
+     */
+    public static function MqttPaket(int $Kopf, string $Rest): string
+    {
+        $Laenge = strlen($Rest);
+        $Zahl = '';
+        do {
+            $Ziffer = $Laenge & 127;
+            $Laenge >>= 7;
+            $Zahl .= chr($Ziffer | ($Laenge > 0 ? 128 : 0));
+        } while ($Laenge > 0);
+        return chr($Kopf) . $Zahl . $Rest;
     }
 }

@@ -10,6 +10,7 @@ Meldet sich am EZVIZ-Konto an, hält die Sitzung und fragt regelmäßig alle Ger
 | E-Mail / Benutzername, Passwort | Zugangsdaten der EZVIZ-App |
 | Bestätigungscode | Nur nötig, wenn EZVIZ die Zwei-Faktor-Anmeldung verlangt (Status „Bestätigungscode wurde angefordert“) |
 | Geräte und Alarme abfragen alle | Abfrageintervall in Sekunden (Standard 60, 0 = aus, mindestens 15) |
+| Alarme sofort per Push empfangen | Legt die Instanz „EZVIZ Push“ an; Alarme kommen dann in Sekunden statt beim nächsten Abruf (siehe [EZVIZ Push](../Push/README.md)) |
 | Server | Standard `apiieu.ezvizlife.com`. Bei einer anderen Region stellt das Modul automatisch um |
 
 ## Anmeldung
@@ -23,5 +24,6 @@ Meldet sich am EZVIZ-Konto an, hält die Sitzung und fragt regelmäßig alle Ger
 ```php
 bool  EZVIZ_Login(int $InstanzID);       // Neu anmelden und Geräte abfragen
 bool  EZVIZ_RefreshAll(int $InstanzID);  // Alle Geräte und Alarme sofort abfragen
+void  EZVIZ_RefreshSoon(int $InstanzID); // Abruf in Kürze anstoßen (kehrt sofort zurück)
 array EZVIZ_GetDevices(int $InstanzID);  // [Seriennummer => [name, model, category, online]]
 ```

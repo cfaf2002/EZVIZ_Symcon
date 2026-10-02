@@ -20,8 +20,10 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 | Benutzer / IP / Port | Standard `admin`, IP automatisch aus der Cloud, Port 554 |
 | Bild des letzten Alarms laden | Lädt das Alarmbild in ein Medienobjekt |
 | „Bewegung erkannt“ zurücksetzen nach | Sekunden, nach denen die Variable wieder auf Aus geht (Standard 60) |
-| Akku schwach ab | Grenze in % für die Warnung (Standard 20, 0 = keine Warnung) |
-| Meldung an die Visualisierung senden / Visualisierung | Schickt bei schwachem Akku eine Benachrichtigung an die ausgewählte Kachel-Visualisierung (erscheint dort und als Push auf den Handys) |
+| Benachrichtigungen → Visualisierung | Kachel-Visualisierung, an die Meldungen gehen (erscheinen dort und als Push auf den Handys) |
+| Bei Bewegung eine Meldung senden | Meldung „Bewegung: Kamera“ bei jedem neuen Alarm, höchstens alle X Sekunden (Standard 120) |
+| Bei schwachem Akku eine Meldung senden / Akku schwach ab | Nur Akku-Kameras, Grenze in % (Standard 20) |
+| Licht steuern | Nur Licht-Kameras (z. B. LC3): Variable „Licht“, Regler „Helligkeit“ und Knopf „Licht“ in der Kachel |
 | Dauer je Schwenkschritt | Wie lange die Kamera pro Tastendruck schwenkt (Standard 500 ms) |
 
 ## Schneller Bildaufbau
@@ -42,7 +44,7 @@ Kommt kein Livebild, die Adresse zuerst mit VLC testen – sie steht im Button �
 
 ## Akku-Warnung
 
-Erreicht der Akku die eingestellte Grenze, kommt **eine** Meldung: in der Visualisierung, als Push auf den angemeldeten Handys und im Meldungsfenster. Eine neue Meldung gibt es erst, nachdem der Akku wieder geladen wurde (5 % über der Grenze). Mit „Akku-Meldung testen“ lässt sich prüfen, ob die Meldung ankommt.
+Erreicht der Akku die eingestellte Grenze, kommt **eine** Meldung: in der Visualisierung, als Push auf den angemeldeten Handys und im Meldungsfenster. Eine neue Meldung gibt es erst, nachdem der Akku wieder geladen wurde (5 % über der Grenze). Mit „Meldung testen“ (unter „Fehlersuche“) lässt sich prüfen, ob Meldungen ankommen.
 
 ## Variablen
 
@@ -54,6 +56,7 @@ Erreicht der Akku die eingestellte Grenze, kommt **eine** Meldung: in der Visual
 | Letzter Alarm / Alarmart | Zeitpunkt und Art des neuesten Alarms |
 | Schalter | Nur die, die die Kamera meldet: Schlafmodus (Privatsphäre), Objektiv abdecken, Statusleuchte, Infrarot-Nachtsicht, Tonaufnahme, Bewegungsverfolgung, Alarmton, Alarmlicht |
 | Schwenken | Links / Rechts / Hoch / Runter – nur bei Schwenk-/Neigekameras (z. B. C8C) |
+| Licht / Helligkeit | Nur mit „Licht steuern“: Licht an/aus und Helligkeit 1–100 % |
 | Akku / Akku schwach | Nur bei Akku-Kameras: Akkustand und ob die Grenze erreicht ist |
 | WLAN-Signal | Nur wenn die Kamera den Wert liefert |
 | Firmware / Firmware-Update verfügbar | Firmwarestand |
@@ -67,7 +70,9 @@ Medienobjekte: **Standbild**, **Livestream** (RTSP) und **Alarmbild**.
 bool   EZVIZ_Update(int $InstanzID);                              // Sofort neu abfragen
 bool   EZVIZ_UpdateSnapshot(int $InstanzID);                      // Sofort neues Standbild holen
 string EZVIZ_GetSnapshotStatus(int $InstanzID);                   // Ergebnis/Fehlergrund des letzten Versuchs
-bool   EZVIZ_TestBatteryNotification(int $InstanzID);             // Test-Meldung „Akku schwach“ senden
+bool   EZVIZ_TestNotification(int $InstanzID);                    // Test-Meldung an die Visualisierung
+bool   EZVIZ_SetLight(int $InstanzID, bool $An);                  // Licht an/aus (Licht-Kameras)
+bool   EZVIZ_SetBrightness(int $InstanzID, int $Prozent);         // Helligkeit 1–100 %
 bool   EZVIZ_SetMotionDetection(int $InstanzID, bool $Aktiv);     // Bewegungserkennung ein/aus
 bool   EZVIZ_SetSwitch(int $InstanzID, int $Typ, bool $Aktiv);    // z. B. 21 = Schlafmodus, 3 = Statusleuchte, 10 = Nachtsicht
 bool   EZVIZ_Move(int $InstanzID, string $Richtung);              // 'left', 'right', 'up', 'down'
