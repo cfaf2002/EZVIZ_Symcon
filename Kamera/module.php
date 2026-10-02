@@ -222,7 +222,8 @@ class EZVIZKamera extends IPSModuleStrict
             if (($Element['name'] ?? '') === 'StandbildInfo') {
                 $Zeit = $this->ReadAttributeInteger('StandbildZeit');
                 $Fehler = $this->ReadAttributeString('StandbildFehler');
-                $Element['caption'] = 'Standbild: ' . ($Zeit > 0 ? 'zuletzt ' . date('d.m. H:i:s', $Zeit) . ' (' . $this->ReadAttributeString('StandbildWeg') . ')' : 'noch keins')
+                $Weg = $this->ReadAttributeString('StandbildWeg');
+                $Element['caption'] = 'Standbild: ' . ($Zeit > 0 ? 'zuletzt ' . date('d.m. H:i:s', $Zeit) . ($Weg !== '' ? ' (' . $Weg . ')' : '') : 'noch keins')
                     . ($Fehler !== '' ? ' – letzter Versuch ' . $Fehler : '');
             }
             if (($Element['name'] ?? '') === 'StreamInfo') {
@@ -320,12 +321,44 @@ class EZVIZKamera extends IPSModuleStrict
     public function UpdateSnapshot(): bool
     {
         if (trim($this->ReadPropertyString('Serial')) === '') {
+            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' Keine Seriennummer');
             return false;
         }
         if ($this->Schlaeft()) {
+            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' Kamera im Schlafmodus – kein Bild möglich');
             $this->SendDebug('Standbild', 'Kamera im Schlafmodus – übersprungen', 0);
             return false;
         }
+        @set_time_limit(90);
+        try {
+            return $this->StandbildHolen();
+        } catch (Throwable $e) {
+            $Text = 'Fehler im Modul: ' . $e->getMessage() . ' (Zeile ' . $e->getLine() . ')';
+            $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . $Text);
+            $this->SendDebug('Standbild', $Text, 0);
+            return false;
+        }
+    }
+
+    /**
+     * Ergebnis des letzten Standbild-Versuchs als Text.
+     */
+    public function GetSnapshotStatus(): string
+    {
+        $Fehler = $this->ReadAttributeString('StandbildFehler');
+        if ($Fehler !== '') {
+            return 'Letzter Versuch um ' . $Fehler;
+        }
+        $Zeit = $this->ReadAttributeInteger('StandbildZeit');
+        if ($Zeit <= 0) {
+            return 'Noch kein Standbild.';
+        }
+        $Weg = $this->ReadAttributeString('StandbildWeg');
+        return 'Standbild aktualisiert um ' . date('H:i:s', $Zeit) . ($Weg !== '' ? ' (' . $Weg . ')' : '') . '.';
+    }
+
+    private function StandbildHolen(): bool
+    {
         $Quelle = $this->ReadPropertyInteger('StandbildQuelle');
         $Bild = null;
         $Fehler = [];
@@ -333,8 +366,9 @@ class EZVIZKamera extends IPSModuleStrict
         // Akku-Kameras schlafen meist – lokal ist dann niemand erreichbar, also gleich die Cloud
         $Lokal = $Quelle === 2 || ($Quelle === 0 && !$this->HatAkku() && $this->ReadAttributeInteger('LokalPause') < time());
         if ($Lokal) {
+            $Versuch = microtime(true);
             $Bild = $this->StandbildLokal($Fehler);
-            if ($Bild === null) {
+            if ($Bild === null && microtime(true) - $Versuch < 5) {
                 // zweiter Versuch – die Kamera lässt oft nur eine Verbindung gleichzeitig zu
                 usleep(500000);
                 $Bild = $this->StandbildLokal($Fehler);
@@ -622,21 +656,24 @@ class EZVIZKamera extends IPSModuleStrict
         $Datei = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ezviz_' . $this->InstanceID . '.jpg';
         @unlink($Datei);
 
-        $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -i ' . escapeshellarg($Url)
+        $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -timeout 8000000 -i ' . escapeshellarg($Url)
             . ' -frames:v 1 -q:v 4 -y ' . escapeshellarg($Datei);
-        if (DIRECTORY_SEPARATOR === '/' && is_executable('/usr/bin/timeout')) {
-            $Befehl = '/usr/bin/timeout 20 ' . $Befehl;
-        }
         $Start = microtime(true);
-        $Ausgabe = [];
-        $Code = 0;
-        exec($Befehl . ' 2>&1', $Ausgabe, $Code);
-
+        [$Code, $Ausgabe] = self::Ausfuehren($Befehl, 15);
         $Bild = is_file($Datei) ? file_get_contents($Datei) : false;
         @unlink($Datei);
         if ($Code !== 0 || !is_string($Bild) || $Bild === '') {
-            $Grund = $Code === 124 ? 'Zeitüberschreitung (Kamera antwortet nicht)' : trim(implode(' ', array_slice($Ausgabe, -2)));
-            $Fehler[] = 'lokal: ' . ($Grund !== '' ? mb_substr($Grund, 0, 120) : 'Fehler ' . $Code);
+            $Grund = $Code === -9 ? 'Zeitüberschreitung (Kamera antwortet nicht)' : trim(implode(' ', array_slice($Ausgabe, -2)));
+            if (stripos($Grund, '401') !== false || stripos($Grund, 'Unauthorized') !== false) {
+                $Grund = 'Zugang abgelehnt – Verifizierungscode prüfen';
+            } elseif (stripos($Grund, 'refused') !== false) {
+                $Grund = 'Kamera lehnt RTSP ab – in der EZVIZ-App unter Einstellungen → Lokale Dienste RTSP einschalten';
+            } elseif (stripos($Grund, '404') !== false || stripos($Grund, 'Not Found') !== false) {
+                $Grund = 'Stream-Pfad gibt es nicht – unter Livestream einen anderen Stream wählen';
+            } elseif (stripos($Grund, 'No route') !== false || stripos($Grund, 'unreachable') !== false) {
+                $Grund = 'Kamera im Netz nicht erreichbar – IP-Adresse prüfen';
+            }
+            $Fehler[] = 'lokal: ' . ($Grund !== '' ? mb_substr($Grund, 0, 140) : 'Fehler ' . $Code);
             $this->SendDebug('Standbild lokal', 'fehlgeschlagen (' . $Code . '): ' . implode(' ', $Ausgabe), 0);
             return null;
         }
@@ -647,6 +684,52 @@ class EZVIZKamera extends IPSModuleStrict
     /**
      * Standbild über die Cloud: die Kamera macht ein Foto und lädt es hoch.
      */
+    /**
+     * Führt einen Befehl mit fester Zeitgrenze aus (unabhängig vom System-Befehl "timeout").
+     * Liefert [Exitcode, Ausgabezeilen]; -9 = abgebrochen wegen Zeitüberschreitung, -1 = Start nicht möglich.
+     */
+    private static function Ausfuehren(string $Befehl, int $Sekunden): array
+    {
+        if (!function_exists('proc_open')) {
+            $Ausgabe = [];
+            $Code = 0;
+            @exec($Befehl . ' 2>&1', $Ausgabe, $Code);
+            return [$Code, $Ausgabe];
+        }
+        $Prozess = @proc_open($Befehl, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $Rohre);
+        if (!is_resource($Prozess)) {
+            return [-1, ['Programm konnte nicht gestartet werden']];
+        }
+        fclose($Rohre[0]);
+        stream_set_blocking($Rohre[1], false);
+        stream_set_blocking($Rohre[2], false);
+        $Text = '';
+        $Ende = microtime(true) + $Sekunden;
+        $Code = null;
+        while (true) {
+            $Text .= (string) stream_get_contents($Rohre[1]) . (string) stream_get_contents($Rohre[2]);
+            $Status = proc_get_status($Prozess);
+            if (!$Status['running']) {
+                $Code = $Status['exitcode'];
+                break;
+            }
+            if (microtime(true) > $Ende) {
+                proc_terminate($Prozess, 9);
+                $Code = -9;
+                break;
+            }
+            usleep(100000);
+        }
+        $Text .= (string) stream_get_contents($Rohre[1]) . (string) stream_get_contents($Rohre[2]);
+        fclose($Rohre[1]);
+        fclose($Rohre[2]);
+        $Rest = proc_close($Prozess);
+        if ($Code === null || $Code === -1) {
+            $Code = $Rest;
+        }
+        return [(int) $Code, array_values(array_filter(array_map('trim', explode("\n", $Text))))];
+    }
+
     private function StandbildCloud(array &$Fehler): ?string
     {
         $Result = $this->Senden('PUT', '/v3/devconfig/v1/' . $this->Serial() . '/1/capture');

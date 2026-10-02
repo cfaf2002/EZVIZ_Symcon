@@ -64,6 +64,7 @@ Medienobjekte: **Standbild**, **Livestream** (RTSP) und **Alarmbild**.
 ```php
 bool   EZVIZ_Update(int $InstanzID);                              // Sofort neu abfragen
 bool   EZVIZ_UpdateSnapshot(int $InstanzID);                      // Sofort neues Standbild holen
+string EZVIZ_GetSnapshotStatus(int $InstanzID);                   // Ergebnis/Fehlergrund des letzten Versuchs
 bool   EZVIZ_TestBatteryNotification(int $InstanzID);             // Test-Meldung „Akku schwach“ senden
 bool   EZVIZ_SetMotionDetection(int $InstanzID, bool $Aktiv);     // Bewegungserkennung ein/aus
 bool   EZVIZ_SetSwitch(int $InstanzID, int $Typ, bool $Aktiv);    // z. B. 21 = Schlafmodus, 3 = Statusleuchte, 10 = Nachtsicht

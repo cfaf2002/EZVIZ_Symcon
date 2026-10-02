@@ -46,6 +46,12 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 7)**
+- „Standbild jetzt holen“ zeigt sofort das Ergebnis bzw. den Grund, warum es nicht geklappt hat
+- FFmpeg läuft mit eigener Zeitgrenze (15 s) und kann nicht mehr hängen bleiben
+- Verständliche Fehlertexte (Verifizierungscode falsch, RTSP ausgeschaltet, Stream-Pfad falsch, Kamera nicht erreichbar)
+- Befehl EZVIZ_GetSnapshotStatus
+
 **Version 1.0 (Build 6)**
 - Standbild zuverlässiger: zweiter lokaler Versuch, längere Wartezeit (20 s), bei Problemen nur 3 statt 10 Minuten Cloud
 - Grund für ein fehlendes Bild steht in der Kachel und in der Instanz („Standbild: zuletzt … – letzter Versuch …“)

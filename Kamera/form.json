@@ -233,7 +233,7 @@
         {
             "type": "Button",
             "caption": "Standbild jetzt holen",
-            "onClick": "echo EZVIZ_UpdateSnapshot($id) ? 'Standbild aktualisiert.' : 'Kein Standbild – Details im Debug.';"
+            "onClick": "EZVIZ_UpdateSnapshot($id); echo EZVIZ_GetSnapshotStatus($id);"
         },
         {
             "type": "Button",
