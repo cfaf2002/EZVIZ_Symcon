@@ -57,6 +57,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeString('AlarmId', '');
         $this->RegisterAttributeString('LokaleIP', '');
         $this->RegisterAttributeInteger('ParentID', 0);
+        $this->RegisterAttributeInteger('AbrufID', 0);
         $this->RegisterAttributeInteger('StandbildZeit', 0);
         $this->RegisterAttributeInteger('LokalPause', 0);
         $this->RegisterAttributeBoolean('AkkuGemeldet', false);
@@ -152,6 +153,13 @@ class EZVIZKamera extends IPSModuleStrict
                 break;
             case IM_CHANGESTATUS:
                 if ($SenderID == $this->ReadAttributeInteger('ParentID')) {
+                    $this->AbrufBeobachten();
+                    $this->Start();
+                }
+                break;
+            case VM_UPDATE:
+                // Das Konto hat neue Daten geholt – jetzt selbst abholen
+                if ($SenderID == $this->ReadAttributeInteger('AbrufID')) {
                     $this->Start();
                 }
                 break;
@@ -369,6 +377,19 @@ class EZVIZKamera extends IPSModuleStrict
             $Zeilen[] = $T['Name'] . ': alle ' . round(($T['Interval'] ?? 0) / 1000, 1) . ' s, zuletzt ' . $Zeit($T['LastRun'] ?? 0)
                 . ', nächster ' . $Zeit($T['NextRun'] ?? 0) . ', läuft gerade ' . (!empty($T['Running']) ? 'ja' : 'nein');
         }
+        // Laufende Skripte – hängen hier viele lange, ist der Skript-Pool von Symcon voll und Timer warten
+        if (function_exists('IPS_GetScriptThreadList') && function_exists('IPS_GetScriptThread')) {
+            $Laufend = [];
+            foreach (IPS_GetScriptThreadList() as $ThreadID) {
+                $T = @IPS_GetScriptThread($ThreadID);
+                if (!is_array($T) || empty($T['StartTime'])) {
+                    continue;
+                }
+                $Laufend[] = '  seit ' . date('H:i:s', (int) $T['StartTime']) . ': ' . trim((string) ($T['FilePath'] ?? '') . ' ' . (string) ($T['Sender'] ?? ''))
+                    . (!empty($T['ScriptID']) ? ' (Skript #' . $T['ScriptID'] . ')' : '');
+            }
+            $Zeilen[] = 'Laufende Skripte: ' . count($Laufend) . (count($Laufend) ? "\n" . implode("\n", array_slice($Laufend, 0, 15)) : '');
+        }
         return 'Jetzt ' . date('H:i:s') . "\n" . (count($Zeilen) ? implode("\n", $Zeilen) : 'Keine Timer gefunden');
     }
 
@@ -550,6 +571,7 @@ class EZVIZKamera extends IPSModuleStrict
             $this->SetStatus(EZVIZ::STATUS_KEINE_VERBINDUNG);
             return;
         }
+        $this->AbrufBeobachten();
         $Result = EZVIZ::Response(@$this->SendDataToParent(EZVIZ::Request('Status', ['Serial' => $this->Serial()])));
         if ($Result['Success'] && is_array($Result['Data'])) {
             $this->Verarbeiten($Result['Data'], true);
@@ -787,7 +809,8 @@ class EZVIZKamera extends IPSModuleStrict
             }
             return [-1, ['Programme starten ist in diesem Symcon nicht erlaubt']];
         }
-        $Prozess = @proc_open($Befehl, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $Rohre);
+        // "exec": die Shell ersetzt sich durch FFmpeg – so beendet ein Abbruch FFmpeg selbst und nicht nur die Shell
+        $Prozess = @proc_open((DIRECTORY_SEPARATOR === '/' ? 'exec ' : '') . $Befehl, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $Rohre);
         if (!is_resource($Prozess)) {
             return [-1, ['Programm konnte nicht gestartet werden']];
         }
@@ -1285,5 +1308,26 @@ class EZVIZKamera extends IPSModuleStrict
             }
             $this->WriteAttributeInteger('ParentID', $Neu);
         }
+        $this->AbrufBeobachten();
+    }
+
+    /**
+     * Beobachtet die Variable „Letzter Abruf“ des Kontos (Signal für neue Daten).
+     */
+    private function AbrufBeobachten(): void
+    {
+        $Parent = IPS_GetInstance($this->InstanceID)['ConnectionID'];
+        $Neu = $Parent > 0 ? (int) @IPS_GetObjectIDByIdent('Abruf', $Parent) : 0;
+        $Alt = $this->ReadAttributeInteger('AbrufID');
+        if ($Alt === $Neu) {
+            return;
+        }
+        if ($Alt > 0) {
+            @$this->UnregisterMessage($Alt, VM_UPDATE);
+        }
+        if ($Neu > 0) {
+            $this->RegisterMessage($Neu, VM_UPDATE);
+        }
+        $this->WriteAttributeInteger('AbrufID', $Neu);
     }
 }

@@ -31,10 +31,11 @@ Bindet EZVIZ-Kameras (z. B. C8C) in IP-Symcon ein: Status, Bewegungserkennung, S
 EZVIZ Kamera        ─┐
 EZVIZ Kamera        ─┼──►  EZVIZ Konto  ──►  EZVIZ-Cloud
 EZVIZ Konfigurator  ─┘
+(Konto meldet neue Daten über die Variable „Letzter Abruf“, die Kameras holen sie dann selbst ab)
 EZVIZ Kamera  ───── RTSP (lokal) ─────────►  Kamera
 ```
 
-Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Geräteliste + eine Meldungsliste pro Intervall) und verteilt die Daten an die Kameras.
+Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Geräteliste + eine Meldungsliste pro Intervall). Die Kameras holen sich ihre Daten anschließend selbst beim Konto ab.
 
 ## GUIDs
 
@@ -45,6 +46,14 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 | EZVIZ Kamera | EZVIZ | {C4BCA507-8306-4DC3-B7B0-648BEED24442} |
 
 ## Changelog
+
+**Version 1.0 (Build 15)**
+- Fehler behoben: Konto und Kamera konnten sich gegenseitig blockieren (Konto schickte Daten an die Kamera, während die Kamera beim Konto anfragte) – danach standen alle Timer beider Instanzen. Das Konto ruft die Kameras jetzt nicht mehr auf; es setzt nur die Variable „Letzter Abruf“, und die Kameras holen ihre Daten daraufhin selbst
+- Neue Variable „Letzter Abruf“ im Konto
+
+**Version 1.0 (Build 14)**
+- „Timer prüfen“ zeigt zusätzlich die laufenden Skripte von Symcon (Fehlersuche bei stehenden Timern)
+- FFmpeg wird bei Zeitüberschreitung sicher beendet und bleibt nicht im Hintergrund hängen
 
 **Version 1.0 (Build 13)**
 - Kachel fordert selbst alle 30 s ein neues Standbild an, solange sie angezeigt wird (unabhängig von den Symcon-Timern)

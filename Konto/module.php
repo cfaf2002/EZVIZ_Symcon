@@ -45,6 +45,11 @@ class EZVIZKonto extends IPSModuleStrict
 
         $this->SetTimerInterval('Aktualisieren', 0);
 
+        $Datum = defined('VARIABLE_PRESENTATION_DATE_TIME')
+            ? ['PRESENTATION' => VARIABLE_PRESENTATION_DATE_TIME]
+            : ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION];
+        $this->RegisterVariableInteger('Abruf', 'Letzter Abruf', $Datum + ['ICON' => 'clock'], 1);
+
         if (IPS_GetKernelRunlevel() != KR_READY) {
             $this->RegisterMessage(0, IPS_KERNELSTARTED);
             return;
@@ -182,6 +187,19 @@ class EZVIZKonto extends IPSModuleStrict
             $Zeilen[] = $T['Name'] . ': alle ' . round(($T['Interval'] ?? 0) / 1000, 1) . ' s, zuletzt ' . $Zeit($T['LastRun'] ?? 0)
                 . ', nächster ' . $Zeit($T['NextRun'] ?? 0) . ', läuft gerade ' . (!empty($T['Running']) ? 'ja' : 'nein');
         }
+        // Laufende Skripte – hängen hier viele lange, ist der Skript-Pool von Symcon voll und Timer warten
+        if (function_exists('IPS_GetScriptThreadList') && function_exists('IPS_GetScriptThread')) {
+            $Laufend = [];
+            foreach (IPS_GetScriptThreadList() as $ThreadID) {
+                $T = @IPS_GetScriptThread($ThreadID);
+                if (!is_array($T) || empty($T['StartTime'])) {
+                    continue;
+                }
+                $Laufend[] = '  seit ' . date('H:i:s', (int) $T['StartTime']) . ': ' . trim((string) ($T['FilePath'] ?? '') . ' ' . (string) ($T['Sender'] ?? ''))
+                    . (!empty($T['ScriptID']) ? ' (Skript #' . $T['ScriptID'] . ')' : '');
+            }
+            $Zeilen[] = 'Laufende Skripte: ' . count($Laufend) . (count($Laufend) ? "\n" . implode("\n", array_slice($Laufend, 0, 15)) : '');
+        }
         return 'Jetzt ' . date('H:i:s') . "\n" . (count($Zeilen) ? implode("\n", $Zeilen) : 'Keine Timer gefunden');
     }
 
@@ -279,14 +297,10 @@ class EZVIZKonto extends IPSModuleStrict
         $this->WriteAttributeString('Cache', json_encode($Geraete));
         $this->WriteAttributeInteger('Stand', time());
 
-        foreach ($Geraete as $Serial => $Geraet) {
-            $this->SendDataToChildren(json_encode([
-                'DataID' => EZVIZ::DATA_FROM_KONTO,
-                'Serial' => (string) $Serial,
-                'Typ'    => 'Status',
-                'Daten'  => $Geraet
-            ]));
-        }
+        // Kameras nicht direkt aufrufen: Sie holen sich ihre Daten selbst, sobald sich diese
+        // Variable ändert. So können Konto und Kamera nie gleichzeitig aufeinander warten
+        // (vorher konnten sich beide dauerhaft gegenseitig blockieren und alle Timer standen).
+        $this->SetValue('Abruf', time());
         $this->SendDebug('Aktualisieren', count($Geraete) . ' Geräte', 0);
         return true;
     }
