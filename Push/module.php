@@ -186,7 +186,10 @@ class EZVIZPush extends IPSModuleStrict
             return '';
         }
         $Puffer = $this->ReadAttributeString('Puffer');
-        $Puffer = ($Puffer !== '' ? (string) hex2bin($Puffer) : '') . mb_convert_encoding((string) $Data['Buffer'], 'ISO-8859-1', 'UTF-8');
+        // IPSModuleStrict: Daten vom Client Socket kommen HEX-kodiert
+        $Neu = (string) $Data['Buffer'];
+        $Neu = (ctype_xdigit($Neu) && strlen($Neu) % 2 === 0) ? (string) hex2bin($Neu) : $Neu;
+        $Puffer = ($Puffer !== '' ? (string) hex2bin($Puffer) : '') . $Neu;
         $this->WriteAttributeInteger('Empfangen', time());
 
         // Vollständige MQTT-Pakete abarbeiten
@@ -553,7 +556,8 @@ class EZVIZPush extends IPSModuleStrict
         }
         @$this->SendDataToParent(json_encode([
             'DataID' => EZVIZ::DATA_TO_IO,
-            'Buffer' => mb_convert_encoding($Daten, 'UTF-8', 'ISO-8859-1')
+            // IPSModuleStrict: Daten an den Client Socket HEX-kodiert
+            'Buffer' => bin2hex($Daten)
         ]));
     }
 

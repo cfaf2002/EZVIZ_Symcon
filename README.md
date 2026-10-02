@@ -50,6 +50,9 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 22)**
+- Push: Fehler behoben – Daten an die Push-Verbindung wurden falsch kodiert (Symcon erwartet bei diesem Modultyp HEX statt UTF-8), der Server trennte deshalb sofort („End of file“)
+
 **Version 1.0 (Build 21)**
 - Neu: Sofort-Alarme per Push (Schalter im Konto) – eigene Instanz „EZVIZ Push“ wird automatisch angelegt
 - Neu: Bewegungsmeldung an die Visualisierung (Schalter je Kamera, mit Mindestabstand zwischen Meldungen)
