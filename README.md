@@ -46,6 +46,10 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 12)**
+- Konto erneuert die Sitzung jetzt bei jedem Fehler der Geräteliste (EZVIZ meldet eine abgelaufene Sitzung nicht immer gleich) – vorher konnte der automatische Abruf dauerhaft hängen bleiben
+- Konto zeigt, ob der automatische Abruf läuft, und den letzten Fehler; Fehler stehen einmalig im Meldungsfenster
+
 **Version 1.0 (Build 11)**
 - Fehler behoben: Automatische Abrufe (Konto alle 60 s, Standbild alle 30 s, „Bewegung erkannt“ zurücksetzen) liefen nicht – alle Timer rufen jetzt direkt Modulfunktionen auf
 - Sofortiges Standbild (nach Übernehmen, Alarm, Schwenken) hat einen eigenen Timer und stört das feste Intervall nicht mehr

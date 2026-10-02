@@ -34,6 +34,7 @@ class EZVIZKonto extends IPSModuleStrict
         $this->RegisterAttributeString('CodeVerwendet', '');
         $this->RegisterAttributeString('Cache', '{}');
         $this->RegisterAttributeInteger('Stand', 0);
+        $this->RegisterAttributeString('LetzterFehler', '');
 
         $this->RegisterTimer('Aktualisieren', 0, 'EZVIZ_RefreshAll($_IPS[\'TARGET\']);');
     }
@@ -102,6 +103,12 @@ class EZVIZKonto extends IPSModuleStrict
             if ($Stand > 0) {
                 $Info .= ' – letzter Abruf ' . date('d.m.Y H:i:s', $Stand);
             }
+        }
+        $Ms = $this->GetTimerInterval('Aktualisieren');
+        $Info .= ' – automatischer Abruf ' . ($Ms > 0 ? 'alle ' . round($Ms / 1000) . ' s' : 'AUS');
+        $Fehler = $this->ReadAttributeString('LetzterFehler');
+        if ($Fehler !== '') {
+            $Info .= ' – letzter Fehler ' . $Fehler;
         }
         foreach ($Form['actions'] as &$Element) {
             if (($Element['name'] ?? '') === 'Kontoinfo') {
@@ -218,6 +225,7 @@ class EZVIZKonto extends IPSModuleStrict
             $this->SendDebug('Aktualisieren', 'Geräteliste konnte nicht geladen werden', 0);
             return false;
         }
+        $this->WriteAttributeString('LetzterFehler', '');
 
         $Geraete = [];
         foreach ($Liste['deviceInfos'] ?? [] as $Info) {
@@ -275,6 +283,7 @@ class EZVIZKonto extends IPSModuleStrict
                 'filter'  => EZVIZ::LISTE_FILTER
             ]);
             if (!$Result['Success'] || !is_array($Result['Data'])) {
+                $this->FehlerMerken('Geräteliste: ' . $Result['Error']);
                 return null;
             }
             $Gesamt = $this->Zusammenfuehren($Gesamt, $Result['Data']);
@@ -360,6 +369,18 @@ class EZVIZKonto extends IPSModuleStrict
             }
         }
         return $Zeit;
+    }
+
+    /**
+     * Merkt sich den letzten Fehler (Anzeige in der Instanz) und meldet ihn einmal im Meldungsfenster.
+     */
+    private function FehlerMerken(string $Text): void
+    {
+        $Text = trim($Text);
+        if ($Text !== preg_replace('/^\d\d:\d\d:\d\d /', '', $this->ReadAttributeString('LetzterFehler'))) {
+            $this->LogMessage('EZVIZ-Abruf fehlgeschlagen: ' . $Text, KL_WARNING);
+        }
+        $this->WriteAttributeString('LetzterFehler', date('H:i:s') . ' ' . $Text);
     }
 
     private function CacheLesen(): array
@@ -564,7 +585,11 @@ class EZVIZKonto extends IPSModuleStrict
 
         $Result = $this->Http($Method, 'https://' . $this->ApiDomain() . $Path, $Query, $Form);
         $ApiCode = EZVIZ::ApiCode($Result['Data']);
-        if ($Result['Code'] == 401 || $ApiCode === 401 || $ApiCode === 403) {
+        // Abgelaufene Sitzung: EZVIZ meldet das nicht immer mit 401 – bei der Geräteliste
+        // gilt deshalb jeder Fehlercode als Anlass, die Sitzung zu erneuern (wie die EZVIZ-App)
+        $Sitzung = $Result['Code'] == 401 || $ApiCode === 401 || $ApiCode === 403
+            || ($Path === EZVIZ::GERAETELISTE && $Result['Code'] == 200 && $ApiCode !== 200);
+        if ($Sitzung) {
             $this->SendDebug('Anfrage', 'Sitzung abgelaufen – erneuere', 0);
             $this->WriteAttributeString('SessionId', '');
             $Ok = ($this->ReadAttributeString('RefreshId') !== '' && $this->SitzungErneuern()) || $this->Verbinden(true);
