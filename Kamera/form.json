@@ -17,6 +17,13 @@
             "caption": "Der Verifizierungscode (6 Großbuchstaben) steht auf dem Aufkleber der Kamera. Er ist das RTSP-Passwort und entschlüsselt die Alarmbilder."
         },
         {
+            "type": "ValidationTextBox",
+            "name": "Bemerkung",
+            "caption": "Bemerkung",
+            "multiline": true,
+            "width": "600px"
+        },
+        {
             "type": "CheckBox",
             "name": "Kachel",
             "caption": "Eigene Kachel verwenden (Standbild, Status, Schwenken)"
@@ -42,6 +49,22 @@
                     "type": "CheckBox",
                     "name": "StandbildAkku",
                     "caption": "Auch bei Akku-Kameras regelmäßig aktualisieren (leert den Akku schneller)"
+                },
+                {
+                    "type": "Select",
+                    "name": "StandbildQualitaet",
+                    "caption": "Bildqualität (lokal)",
+                    "width": "350px",
+                    "options": [
+                        {
+                            "caption": "Hoch – volle Auflösung aus dem Hauptstream (empfohlen)",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Schnell – wie der Livestream (geringere Auflösung)",
+                            "value": 1
+                        }
+                    ]
                 },
                 {
                     "type": "Select",

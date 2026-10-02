@@ -47,6 +47,13 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 20)**
+- Bemerkung ist jetzt ein Feld in der Kamera-Instanz (unter dem Verifizierungscode) statt in der Kachel; die Variable „Bemerkung“ und EZVIZ_SetNote entfallen
+
+**Version 1.0 (Build 19)**
+- Bessere Bildqualität: Standbild lokal in voller Auflösung aus dem Hauptstream (einstellbar „Hoch“/„Schnell“), höhere JPEG-Qualität, große Bilder erst ab 1920 Pixel Breite verkleinert
+- Bemerkungsfeld in jeder Kamerakachel (antippen zum Bearbeiten), gespeichert in der neuen Variable „Bemerkung“; Befehl EZVIZ_SetNote
+
 **Version 1.0 (Build 18)**
 - Keine chinesischen Fehlertexte mehr: Meldungen der EZVIZ-Cloud werden nur noch übernommen, wenn sie lesbar sind
 - Fehlerhinweis in der Kachel verschwindet, sobald ein neueres Bild da ist (spätestens nach 30 Minuten)

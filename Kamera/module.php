@@ -34,6 +34,7 @@ class EZVIZKamera extends IPSModuleStrict
 
         $this->RegisterPropertyString('Serial', '');
         $this->RegisterPropertyString('Verifizierungscode', '');
+        $this->RegisterPropertyString('Bemerkung', '');
         $this->RegisterPropertyBoolean('Livestream', true);
         $this->RegisterPropertyString('Benutzer', 'admin');
         $this->RegisterPropertyString('IP', '');
@@ -44,6 +45,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyInteger('StandbildQuelle', 0);
         $this->RegisterPropertyInteger('StandbildIntervall', 30);
         $this->RegisterPropertyBoolean('StandbildAkku', false);
+        $this->RegisterPropertyInteger('StandbildQualitaet', 0);
         $this->RegisterPropertyString('FFmpeg', '');
         $this->RegisterPropertyBoolean('Kachel', true);
         $this->RegisterPropertyBoolean('Alarmbild', true);
@@ -514,12 +516,12 @@ class EZVIZKamera extends IPSModuleStrict
     }
 
     /**
-     * Verkleinert große Bilder (z. B. 2K-Fotos aus der Cloud) auf höchstens 1280 Pixel Breite,
+     * Verkleinert große Bilder (z. B. 2K-Fotos aus der Cloud) auf höchstens 1920 Pixel Breite,
      * damit die Kachel sie schnell bekommt.
      */
     private function BildVerkleinern(string $Bild): string
     {
-        if (!function_exists('imagecreatefromstring') || strlen($Bild) < 150000) {
+        if (!function_exists('imagecreatefromstring') || strlen($Bild) < 500000) {
             return $Bild;
         }
         $Quelle = @imagecreatefromstring($Bild);
@@ -529,13 +531,13 @@ class EZVIZKamera extends IPSModuleStrict
         $B = imagesx($Quelle);
         $H = imagesy($Quelle);
         $Ziel = $Quelle;
-        if ($B > 1280) {
-            $NeuH = (int) round($H * 1280 / $B);
-            $Ziel = imagecreatetruecolor(1280, $NeuH);
-            imagecopyresampled($Ziel, $Quelle, 0, 0, 0, 0, 1280, $NeuH, $B, $H);
+        if ($B > 1920) {
+            $NeuH = (int) round($H * 1920 / $B);
+            $Ziel = imagecreatetruecolor(1920, $NeuH);
+            imagecopyresampled($Ziel, $Quelle, 0, 0, 0, 0, 1920, $NeuH, $B, $H);
         }
         ob_start();
-        imagejpeg($Ziel, null, 80);
+        imagejpeg($Ziel, null, 88);
         $Neu = (string) ob_get_clean();
         return ($Neu !== '' && strlen($Neu) < strlen($Bild)) ? $Neu : $Bild;
     }
@@ -773,7 +775,10 @@ class EZVIZKamera extends IPSModuleStrict
     private function StandbildLokal(array &$Fehler): ?string
     {
         $FFmpeg = $this->FFmpegFinden();
-        $Url = $this->StreamUrl(false);
+        // Hohe Qualität: Standbild aus dem Hauptstream (volle Auflösung) – dauert etwas länger,
+        // läuft aber im Hintergrund. Bei eigenem Pfad wird dieser verwendet.
+        $Hoch = $this->ReadPropertyInteger('StandbildQualitaet') === 0 && $this->ReadPropertyInteger('Stream') !== 3;
+        $Url = $this->StreamUrl(false, $Hoch ? self::STREAMS[1] : '');
         if ($FFmpeg === '' || $Url === '') {
             $Fehler[] = 'lokal: ' . ($FFmpeg === '' ? 'FFmpeg nicht gefunden' : 'IP-Adresse unbekannt');
             $this->SendDebug('Standbild lokal', end($Fehler), 0);
@@ -783,7 +788,7 @@ class EZVIZKamera extends IPSModuleStrict
         @unlink($Datei);
 
         $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -timeout 8000000 -i ' . escapeshellarg($Url)
-            . ' -frames:v 1 -q:v 4 -y ' . escapeshellarg($Datei);
+            . ' -frames:v 1 -q:v 2 -y ' . escapeshellarg($Datei);
         $Start = microtime(true);
         [$Code, $Ausgabe] = self::Ausfuehren($Befehl, 15);
         $Bild = is_file($Datei) ? file_get_contents($Datei) : false;
@@ -1210,7 +1215,7 @@ class EZVIZKamera extends IPSModuleStrict
         }
     }
 
-    private function StreamUrl(bool $Maskiert): string
+    private function StreamUrl(bool $Maskiert, string $PfadVorgabe = ''): string
     {
         $IP = $this->IPAdresse();
         if ($IP === '') {
@@ -1222,7 +1227,7 @@ class EZVIZKamera extends IPSModuleStrict
         if ($Benutzer !== '') {
             $Zugang = rawurlencode($Benutzer) . ($Code !== '' ? ':' . ($Maskiert ? '******' : rawurlencode($Code)) : '') . '@';
         }
-        $Pfad = self::STREAMS[$this->ReadPropertyInteger('Stream')] ?? '';
+        $Pfad = $PfadVorgabe !== '' ? $PfadVorgabe : (self::STREAMS[$this->ReadPropertyInteger('Stream')] ?? '');
         if ($Pfad === '') {
             $Pfad = '/' . ltrim($this->ReadPropertyString('Pfad'), '/');
         }
@@ -1266,6 +1271,11 @@ class EZVIZKamera extends IPSModuleStrict
         $this->EnableAction('Aktualisieren');
 
         $this->RegisterVariableInteger('Zeitpunkt', 'Letzte Aktualisierung', $Datum + ['ICON' => 'clock'], 51);
+
+        // Bemerkung ist jetzt eine Einstellung der Instanz – frühere Variable entfernen
+        if (@$this->GetIDForIdent('Bemerkung')) {
+            $this->UnregisterVariable('Bemerkung');
+        }
     }
 
     private static function Option(int $Wert, string $Text, string $Icon): array
