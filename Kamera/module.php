@@ -76,6 +76,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterAttributeInteger('AbrufID', 0);
         $this->RegisterAttributeInteger('StandbildZeit', 0);
         $this->RegisterAttributeInteger('LokalPause', 0);
+        $this->RegisterAttributeString('LokalFehler', '');
         $this->RegisterAttributeBoolean('AkkuGemeldet', false);
         $this->RegisterAttributeInteger('BewegungGemeldet', 0);
         $this->RegisterAttributeString('StandbildFehler', '');
@@ -91,6 +92,7 @@ class EZVIZKamera extends IPSModuleStrict
         // Einmaliges, sofortiges Standbild (nach Übernehmen, Alarm, Schwenken) – getrennt vom festen Intervall
         $this->RegisterTimer('StandbildSofort', 0, 'EZVIZ_TimerSnapshotOnce($_IPS[\'TARGET\']);');
         $this->RegisterTimer('Abgleich', 0, 'EZVIZ_TimerCheck($_IPS[\'TARGET\']);');
+        $this->RegisterTimer('Holen', 0, 'EZVIZ_TimerFetch($_IPS[\'TARGET\']);');
     }
 
     /**
@@ -196,7 +198,9 @@ class EZVIZKamera extends IPSModuleStrict
             case VM_UPDATE:
                 // Das Konto hat neue Daten geholt – jetzt selbst abholen
                 if ($SenderID == $this->ReadAttributeInteger('AbrufID')) {
-                    $this->Start();
+                    // Nicht direkt hier abholen (die Nachricht kommt aus dem Abruf des Kontos) –
+                    // kurz entkoppelt über einen eigenen Timer, damit sich nichts gegenseitig blockiert
+                    $this->SetTimerInterval('Holen', 250);
                 }
                 break;
         }
@@ -516,6 +520,15 @@ class EZVIZKamera extends IPSModuleStrict
     }
 
     /**
+     * Vom Timer aufgerufen: neue Daten beim Konto abholen.
+     */
+    public function TimerFetch(): void
+    {
+        $this->SetTimerInterval('Holen', 0);
+        $this->Start();
+    }
+
+    /**
      * Vom Timer aufgerufen: Sind die Daten älter als 3 Minuten, Abo erneuern und selbst beim Konto abholen.
      */
     public function TimerCheck(): void
@@ -592,6 +605,13 @@ class EZVIZKamera extends IPSModuleStrict
                 usleep(500000);
                 $Bild = $this->StandbildLokal($Fehler);
             }
+            if ($Bild === null && $this->ReadPropertyInteger('StandbildQualitaet') === 0) {
+                // Hauptstream klappt nicht (manche Kameras/Firmwares) – mit dem Livestream-Pfad versuchen
+                $Bild = $this->StandbildLokal($Fehler, true);
+            }
+            if ($Bild === null) {
+                $this->WriteAttributeString('LokalFehler', implode(' / ', array_unique($Fehler)));
+            }
             if ($Bild === null && $Quelle === 0) {
                 // 3 Minuten lang direkt die Cloud nehmen, dann wieder lokal versuchen
                 $this->WriteAttributeInteger('LokalPause', time() + 180);
@@ -599,6 +619,10 @@ class EZVIZKamera extends IPSModuleStrict
             $Weg = 'lokal';
         }
         if ($Bild === null && $Quelle !== 2) {
+            if (!$Lokal && $Quelle === 0 && !$this->HatAkku() && $this->ReadAttributeString('LokalFehler') !== '') {
+                // Lokal pausiert – Grund des letzten lokalen Fehlschlags mit anzeigen
+                $Fehler[] = 'lokal pausiert (' . $this->ReadAttributeString('LokalFehler') . ')';
+            }
             $Bild = $this->StandbildCloud($Fehler);
             $Weg = 'Cloud';
         }
@@ -616,6 +640,9 @@ class EZVIZKamera extends IPSModuleStrict
         $this->WriteAttributeInteger('StandbildZeit', time());
         $this->WriteAttributeString('StandbildFehler', '');
         $this->WriteAttributeString('StandbildWeg', $Weg);
+        if ($Weg === 'lokal') {
+            $this->WriteAttributeString('LokalFehler', '');
+        }
         $this->SendDebug('Standbild', 'aktualisiert (' . $Weg . ', ' . round(strlen($Bild) / 1024) . ' KB)', 0);
         $this->KachelSenden(true);
         return true;
@@ -938,12 +965,12 @@ class EZVIZKamera extends IPSModuleStrict
     /**
      * Standbild lokal: ein einzelnes Bild per FFmpeg aus dem RTSP-Stream.
      */
-    private function StandbildLokal(array &$Fehler): ?string
+    private function StandbildLokal(array &$Fehler, bool $Einfach = false): ?string
     {
         $FFmpeg = $this->FFmpegFinden();
         // Hohe Qualität: Standbild aus dem Hauptstream (volle Auflösung) – dauert etwas länger,
         // läuft aber im Hintergrund. Bei eigenem Pfad wird dieser verwendet.
-        $Hoch = $this->ReadPropertyInteger('StandbildQualitaet') === 0 && $this->ReadPropertyInteger('Stream') !== 3;
+        $Hoch = !$Einfach && $this->ReadPropertyInteger('StandbildQualitaet') === 0 && $this->ReadPropertyInteger('Stream') !== 3;
         $Url = $this->StreamUrl(false, $Hoch ? self::STREAMS[1] : '');
         if ($FFmpeg === '' || $Url === '') {
             $Fehler[] = 'lokal: ' . ($FFmpeg === '' ? 'FFmpeg nicht gefunden' : 'IP-Adresse unbekannt');
@@ -956,7 +983,7 @@ class EZVIZKamera extends IPSModuleStrict
         $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -timeout 8000000 -i ' . escapeshellarg($Url)
             . ' -frames:v 1 -q:v 2 -y ' . escapeshellarg($Datei);
         $Start = microtime(true);
-        [$Code, $Ausgabe] = self::Ausfuehren($Befehl, 15);
+        [$Code, $Ausgabe] = self::Ausfuehren($Befehl, $Einfach ? 8 : 12);
         $Bild = is_file($Datei) ? file_get_contents($Datei) : false;
         @unlink($Datei);
         if ($Code !== 0 || !is_string($Bild) || $Bild === '') {

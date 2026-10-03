@@ -50,6 +50,10 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 28)**
+- Standbild lokal: klappt der Hauptstream nicht, wird automatisch der Livestream-Pfad versucht, bevor die Cloud genutzt wird; der Grund eines lokalen Fehlschlags wird mit angezeigt
+- Kamera holt neue Daten vom Konto entkoppelt über einen eigenen Timer (verhindert gegenseitiges Blockieren)
+
 **Version 1.0 (Build 27)**
 - Akku-Kameras: Standbild wird jetzt regelmäßig aktualisiert, solange die Kachel geöffnet ist (Schalter, standardmäßig an) – im Hintergrund weiterhin nur, wenn ausdrücklich eingeschaltet
 
