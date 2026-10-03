@@ -20,6 +20,14 @@ class EZVIZKamera extends IPSModuleStrict
         4 => ['DOWN', 'Runter', 'arrow-down']
     ];
 
+    // Arbeitsmodi der Akku-Kameras (Wert der EZVIZ-Schnittstelle => Anzeige)
+    private const ARBEITSMODI = [
+        0 => 'Energiesparen',
+        1 => 'Hochleistung',
+        2 => 'Netzbetrieb',
+        3 => 'Super-Energiesparen'
+    ];
+
     // Stream-Auswahl: 0 Unterstream, 1 Hauptstream, 2 Standard, 3 eigener Pfad
     private const STREAMS = [
         0 => '/h264/ch1/sub/av_stream',
@@ -57,6 +65,8 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyBoolean('BewegungMeldung', false);
         $this->RegisterPropertyInteger('BewegungPause', 120);
         $this->RegisterPropertyBoolean('LichtSteuerung', false);
+        $this->RegisterPropertyBoolean('ArbeitsmodusSteuern', false);
+        $this->RegisterPropertyBoolean('WachHalten', false);
 
         $this->RegisterAttributeString('Daten', '');
         $this->RegisterAttributeString('AlarmId', '');
@@ -79,6 +89,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterTimer('Standbild', 0, 'EZVIZ_TimerSnapshot($_IPS[\'TARGET\']);');
         // Einmaliges, sofortiges Standbild (nach Übernehmen, Alarm, Schwenken) – getrennt vom festen Intervall
         $this->RegisterTimer('StandbildSofort', 0, 'EZVIZ_TimerSnapshotOnce($_IPS[\'TARGET\']);');
+        $this->RegisterTimer('Abgleich', 0, 'EZVIZ_TimerCheck($_IPS[\'TARGET\']);');
     }
 
     /**
@@ -134,7 +145,13 @@ class EZVIZKamera extends IPSModuleStrict
 
         $this->RegisterMessage($this->InstanceID, FM_CONNECT);
         $this->RegisterMessage($this->InstanceID, FM_DISCONNECT);
+        // Nachrichten-Abos gehen beim Neuladen des Moduls verloren – deshalb hier immer neu anmelden
+        // (früher wurde ein bereits gemerktes Abo übersprungen, danach kamen keine Daten mehr an)
+        $this->WriteAttributeInteger('ParentID', 0);
+        $this->WriteAttributeInteger('AbrufID', 0);
         $this->ParentBeobachten();
+        // Sicherheitsnetz: alle 5 Minuten prüfen, ob die Daten aktuell sind
+        $this->SetTimerInterval('Abgleich', 300000);
 
         if ($Serial === '') {
             $this->SetStatus(EZVIZ::STATUS_KEINE_SERIENNUMMER);
@@ -225,6 +242,9 @@ class EZVIZKamera extends IPSModuleStrict
                 break;
             case 'Licht':
                 $this->SetLight((bool) $Value);
+                break;
+            case 'Arbeitsmodus':
+                $this->SetWorkMode((int) $Value);
                 break;
             case 'Helligkeit':
                 $this->SetBrightness((int) $Value);
@@ -356,6 +376,46 @@ class EZVIZKamera extends IPSModuleStrict
     }
 
     /**
+     * Arbeitsmodus einer Akku-Kamera: 0 = Energiesparen, 1 = Hochleistung, 2 = Netzbetrieb, 3 = Super-Energiesparen.
+     * Nur wenn „Arbeitsmodus steuern“ in der Instanz eingeschaltet ist.
+     */
+    public function SetWorkMode(int $Modus): bool
+    {
+        if (!$this->ReadPropertyBoolean('ArbeitsmodusSteuern')) {
+            $this->SendDebug('Arbeitsmodus', 'In der Instanz ausgeschaltet', 0);
+            return false;
+        }
+        if (!isset(self::ARBEITSMODI[$Modus])) {
+            return false;
+        }
+        $Result = $this->Senden('PUT', '/v3/devconfig/v1/keyValue/' . $this->Serial() . '/1/op', [
+            'key'   => 'batteryCameraWorkMode',
+            'value' => (string) $Modus
+        ]);
+        if (!$Result['Success']) {
+            $this->Fehler('Arbeitsmodus', $Result);
+            return false;
+        }
+        $this->Setzen('Arbeitsmodus', $Modus);
+        return true;
+    }
+
+    /**
+     * Bittet eine wache Akku-Kamera, länger wach zu bleiben (wie die App nach dem Öffnen).
+     */
+    private function Wachhalten(): void
+    {
+        foreach ([2, 1] as $Typ) {
+            $Result = $this->Senden('PUT', '/v3/specialBizs/v1/batteryDevices/' . $this->Serial() . '/1/' . $Typ . '/sleep');
+            if ($Result['Success']) {
+                $this->SendDebug('Wachhalten', 'Kamera bleibt länger wach (Typ ' . $Typ . ')', 0);
+                return;
+            }
+        }
+        $this->SendDebug('Wachhalten', 'nicht möglich: ' . $Result['Error'], 0);
+    }
+
+    /**
      * Kamera schwenken: 'left', 'right', 'up' oder 'down'.
      */
     public function Move(string $Richtung): bool
@@ -452,6 +512,20 @@ class EZVIZKamera extends IPSModuleStrict
     public function TimerSnapshotOnce(): void
     {
         $this->RequestAction('StandbildSofort', true);
+    }
+
+    /**
+     * Vom Timer aufgerufen: Sind die Daten älter als 3 Minuten, Abo erneuern und selbst beim Konto abholen.
+     */
+    public function TimerCheck(): void
+    {
+        $ID = @$this->GetIDForIdent('Zeitpunkt');
+        if ($ID && time() - (int) GetValue($ID) > 180) {
+            $this->SendDebug('Abgleich', 'Daten veraltet – hole selbst ab', 0);
+            $this->WriteAttributeInteger('AbrufID', 0);
+            $this->AbrufBeobachten();
+            $this->Start();
+        }
     }
 
     /**
@@ -600,6 +674,26 @@ class EZVIZKamera extends IPSModuleStrict
     }
 
     /**
+     * Alle Werte der Cloud, die mit Akku/Strom zu tun haben (zur Fehlersuche).
+     */
+    public function GetBatteryInfo(): string
+    {
+        $Treffer = [];
+        $Suchen = function ($Wert, string $Pfad) use (&$Suchen, &$Treffer) {
+            if (is_array($Wert)) {
+                foreach ($Wert as $K => $V) {
+                    $Suchen($V, $Pfad === '' ? (string) $K : $Pfad . '.' . $K);
+                }
+            } elseif (preg_match('/power|batter|charg|electric|lowpower/i', $Pfad)) {
+                $Treffer[] = $Pfad . ' = ' . (is_scalar($Wert) ? var_export($Wert, true) : json_encode($Wert));
+            }
+        };
+        $Suchen($this->GetData(), '');
+        $ID = @$this->GetIDForIdent('Zeitpunkt');
+        return 'Daten vom ' . ($ID ? date('d.m. H:i:s', (int) GetValue($ID)) : '?') . "\n" . (count($Treffer) ? implode("\n", $Treffer) : 'Keine Akku-Werte gefunden');
+    }
+
+    /**
      * Rohdaten der Kamera aus der Cloud (zur Fehlersuche).
      */
     public function GetData(): array
@@ -695,6 +789,25 @@ class EZVIZKamera extends IPSModuleStrict
             $this->AkkuVerarbeiten((int) $Optionen['powerRemaining'], $Neu);
         }
 
+        // Arbeitsmodus (nur Akku-Kameras, nur wenn in der Instanz eingeschaltet)
+        if ($this->ReadPropertyBoolean('ArbeitsmodusSteuern') && $this->HatAkku()) {
+            if (!@$this->GetIDForIdent('Arbeitsmodus')) {
+                $Optionen2 = [];
+                foreach (self::ARBEITSMODI as $Wert => $Text) {
+                    $Optionen2[] = self::Option($Wert, $Text, '');
+                }
+                $this->RegisterVariableInteger('Arbeitsmodus', 'Arbeitsmodus', [
+                    'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
+                    'ICON'         => 'gauge',
+                    'OPTIONS'      => json_encode($Optionen2)
+                ], 9);
+                $this->EnableAction('Arbeitsmodus');
+            }
+            if (isset($Optionen['batteryCameraWorkMode']) && is_numeric($Optionen['batteryCameraWorkMode'])) {
+                $this->Setzen('Arbeitsmodus', (int) $Optionen['batteryCameraWorkMode']);
+            }
+        }
+
         // WLAN
         $Wifi = $D['WIFI'] ?? [];
         if (isset($Wifi['signal']) && is_numeric($Wifi['signal'])) {
@@ -764,6 +877,13 @@ class EZVIZKamera extends IPSModuleStrict
             // Meldung nur für frische Alarme (nicht für alte nach Neustart)
             if ($Alter < 600) {
                 $this->BewegungMelden((string) ($A['text'] ?? ''), $Zeit);
+            }
+            // Akku-Kamera ist gerade wach: länger wach halten und ein frisches Standbild holen
+            if ($Alter < 120 && $this->ReadPropertyBoolean('WachHalten') && $this->HatAkku()) {
+                $this->Wachhalten();
+                if ($this->ReadPropertyBoolean('Standbild')) {
+                    $this->SetTimerInterval('StandbildSofort', 1500);
+                }
             }
         }
 
@@ -1381,6 +1501,11 @@ class EZVIZKamera extends IPSModuleStrict
 
         $this->RegisterVariableInteger('Zeitpunkt', 'Letzte Aktualisierung', $Datum + ['ICON' => 'clock'], 51);
 
+        // Arbeitsmodus nur, solange in der Instanz eingeschaltet
+        if (!$this->ReadPropertyBoolean('ArbeitsmodusSteuern') && @$this->GetIDForIdent('Arbeitsmodus')) {
+            $this->UnregisterVariable('Arbeitsmodus');
+        }
+
         // Lichtsteuerung (Licht-Kameras wie LC3)
         if ($this->ReadPropertyBoolean('LichtSteuerung')) {
             $this->RegisterVariableBoolean('Licht', 'Licht', ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'ICON' => 'lightbulb'], 7);
@@ -1415,7 +1540,7 @@ class EZVIZKamera extends IPSModuleStrict
             'IconActive'  => $Icon !== '',
             'IconValue'   => $Icon,
             'ColorActive' => false,
-            'ColorValue'  => -1
+            'Color'       => -1
         ];
     }
 

@@ -23,6 +23,8 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 | Benachrichtigungen → Visualisierung | Kachel-Visualisierung, an die Meldungen gehen (erscheinen dort und als Push auf den Handys) |
 | Bei Bewegung eine Meldung senden | Meldung „Bewegung: Kamera“ bei jedem neuen Alarm, höchstens alle X Sekunden (Standard 120) |
 | Bei schwachem Akku eine Meldung senden / Akku schwach ab | Nur Akku-Kameras, Grenze in % (Standard 20) |
+| Nach einem Alarm länger wach halten | Nur Akku-Kameras: hält die Kamera nach einer Bewegung wach und holt ein frisches Standbild (am besten mit Push im Konto) |
+| Arbeitsmodus steuern | Nur Akku-Kameras: Variable „Arbeitsmodus“ und Befehl EZVIZ_SetWorkMode; ausgeschaltet bleibt der Modus unverändert |
 | Licht steuern | Nur Licht-Kameras (z. B. LC3): Variable „Licht“, Regler „Helligkeit“ und Knopf „Licht“ in der Kachel |
 | Dauer je Schwenkschritt | Wie lange die Kamera pro Tastendruck schwenkt (Standard 500 ms) |
 
@@ -57,6 +59,7 @@ Erreicht der Akku die eingestellte Grenze, kommt **eine** Meldung: in der Visual
 | Schalter | Nur die, die die Kamera meldet: Schlafmodus (Privatsphäre), Objektiv abdecken, Statusleuchte, Infrarot-Nachtsicht, Tonaufnahme, Bewegungsverfolgung, Alarmton, Alarmlicht |
 | Schwenken | Links / Rechts / Hoch / Runter – nur bei Schwenk-/Neigekameras (z. B. C8C) |
 | Licht / Helligkeit | Nur mit „Licht steuern“: Licht an/aus und Helligkeit 1–100 % |
+| Arbeitsmodus | Nur mit „Arbeitsmodus steuern“: Energiesparen / Hochleistung / Netzbetrieb / Super-Energiesparen |
 | Akku / Akku schwach | Nur bei Akku-Kameras: Akkustand und ob die Grenze erreicht ist |
 | WLAN-Signal | Nur wenn die Kamera den Wert liefert |
 | Firmware / Firmware-Update verfügbar | Firmwarestand |
@@ -71,6 +74,7 @@ bool   EZVIZ_Update(int $InstanzID);                              // Sofort neu 
 bool   EZVIZ_UpdateSnapshot(int $InstanzID);                      // Sofort neues Standbild holen
 string EZVIZ_GetSnapshotStatus(int $InstanzID);                   // Ergebnis/Fehlergrund des letzten Versuchs
 bool   EZVIZ_TestNotification(int $InstanzID);                    // Test-Meldung an die Visualisierung
+bool   EZVIZ_SetWorkMode(int $InstanzID, int $Modus);             // 0 Energiesparen, 1 Hochleistung, 2 Netzbetrieb, 3 Super-Energiesparen
 bool   EZVIZ_SetLight(int $InstanzID, bool $An);                  // Licht an/aus (Licht-Kameras)
 bool   EZVIZ_SetBrightness(int $InstanzID, int $Prozent);         // Helligkeit 1–100 %
 bool   EZVIZ_SetMotionDetection(int $InstanzID, bool $Aktiv);     // Bewegungserkennung ein/aus

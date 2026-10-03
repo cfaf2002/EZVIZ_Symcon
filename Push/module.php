@@ -68,6 +68,7 @@ class EZVIZPush extends IPSModuleStrict
         }
         $this->RegisterMessage($this->InstanceID, FM_CONNECT);
         $this->RegisterMessage($this->InstanceID, FM_DISCONNECT);
+        $this->WriteAttributeInteger('ParentID', 0); // Abo nach Neuladen immer neu anmelden
         $this->ParentBeobachten();
 
         // Nicht hier verbinden (würde das Konto während dessen ApplyChanges aufrufen) – kurz verzögert über den Timer

@@ -50,6 +50,20 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 26)**
+- Fehlersuche: Button „Akku-Werte aus der Cloud anzeigen“ (Befehl EZVIZ_GetBatteryInfo)
+
+**Version 1.0 (Build 25)**
+- Fehler behoben: Nach einem Modul-Update übernahmen die Kameras keine neuen Daten mehr vom Konto (das Abo auf „Letzter Abruf“ wurde nach dem Neuladen nicht erneuert)
+- Sicherheitsnetz: Jede Kamera prüft alle 5 Minuten, ob ihre Daten aktuell sind, und holt sie sonst selbst ab
+
+**Version 1.0 (Build 24)**
+- Fehler behoben: „Invalid Configuration“ in der Handy-App bei „Schwenken“, „Aktualisieren“ und „Arbeitsmodus“ (Feld „Color“ statt „ColorValue“ in den Auswahl-Optionen)
+
+**Version 1.0 (Build 23)**
+- Akku-Kameras: „Nach einem Alarm länger wach halten“ (Schalter je Kamera) – die Kamera bleibt nach einer Bewegung länger wach, das Modul holt sofort ein frisches Standbild
+- Akku-Kameras: Arbeitsmodus (Energiesparen / Hochleistung / Netzbetrieb / Super-Energiesparen) als Variable und Befehl EZVIZ_SetWorkMode – nur aktiv, wenn in der Instanz eingeschaltet
+
 **Version 1.0 (Build 22)**
 - Push: Fehler behoben – Daten an die Push-Verbindung wurden falsch kodiert (Symcon erwartet bei diesem Modultyp HEX statt UTF-8), der Server trennte deshalb sofort („End of file“)
 

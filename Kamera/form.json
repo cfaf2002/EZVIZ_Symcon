@@ -246,6 +246,31 @@
         },
         {
             "type": "ExpansionPanel",
+            "caption": "Akku-Kameras: Wachhalten und Arbeitsmodus",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "WachHalten",
+                    "caption": "Nach einem Alarm länger wach halten und ein frisches Standbild holen"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Wirkt am besten zusammen mit „Alarme sofort per Push empfangen“ im Konto – sonst schläft die Kamera oft schon wieder, bevor der Alarm ankommt."
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "ArbeitsmodusSteuern",
+                    "caption": "Arbeitsmodus steuern (Variable „Arbeitsmodus“ und Befehl EZVIZ_SetWorkMode)"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Energiesparen: Akku hält am längsten. Hochleistung: schläft seltener, Bilder auf Knopfdruck klappen öfter, Akku hält kürzer. Netzbetrieb: für Kameras am Netzteil oder Solarpanel – praktisch immer wach."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
             "caption": "Schwenken",
             "expanded": false,
             "items": [
@@ -305,6 +330,11 @@
                     "type": "Button",
                     "caption": "Timer prüfen",
                     "onClick": "echo EZVIZ_GetTimerInfo($id);"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Akku-Werte aus der Cloud anzeigen",
+                    "onClick": "echo EZVIZ_GetBatteryInfo($id);"
                 }
             ]
         }
