@@ -53,6 +53,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyInteger('StandbildQuelle', 0);
         $this->RegisterPropertyInteger('StandbildIntervall', 30);
         $this->RegisterPropertyBoolean('StandbildAkku', false);
+        $this->RegisterPropertyBoolean('StandbildAkkuKachel', true);
         $this->RegisterPropertyInteger('StandbildQualitaet', 0);
         $this->RegisterPropertyString('FFmpeg', '');
         $this->RegisterPropertyBoolean('Kachel', true);
@@ -1180,6 +1181,22 @@ class EZVIZKamera extends IPSModuleStrict
         return [max(10, $Sekunden) * 1000, ''];
     }
 
+    /**
+     * Intervall, in dem die geöffnete Kachel selbst neue Bilder anfordert (ms).
+     * Akku-Kameras: nur solange die Kachel offen ist – schont den Akku, weil niemand zuschaut sonst.
+     */
+    private function KachelIntervall(): int
+    {
+        [$Ms] = $this->AutoIntervall();
+        if ($Ms > 0) {
+            return $Ms;
+        }
+        if ($this->HatAkku() && $this->ReadPropertyBoolean('Standbild') && $this->ReadPropertyBoolean('StandbildAkkuKachel')) {
+            return max(30, $this->ReadPropertyInteger('StandbildIntervall')) * 1000;
+        }
+        return 0;
+    }
+
     private function StandbildTimer(): void
     {
         [$Ms] = $this->AutoIntervall();
@@ -1220,7 +1237,7 @@ class EZVIZKamera extends IPSModuleStrict
             'bildZeit'   => $this->ReadAttributeInteger('StandbildZeit'),
             'bildArt'    => 'Standbild',
             'fehler'     => '',
-            'intervall'  => (int) ($this->AutoIntervall()[0] / 1000),
+            'intervall'  => (int) ($this->KachelIntervall() / 1000),
             'hatLicht'   => $this->ReadPropertyBoolean('LichtSteuerung'),
             'licht'      => (bool) $Wert('Licht', false)
         ];
@@ -1307,7 +1324,7 @@ class EZVIZKamera extends IPSModuleStrict
         switch ((string) ($A['aktion'] ?? '')) {
             case 'bild':
                 // Automatische Anfragen der Kachel: nicht öfter als im Intervall (mehrere Geräte offen)
-                $Ms = $this->AutoIntervall()[0];
+                $Ms = $this->KachelIntervall();
                 if (!empty($A['auto']) && ($Ms <= 0 || time() - $this->ReadAttributeInteger('StandbildZeit') < $Ms / 1000 - 5)) {
                     return;
                 }

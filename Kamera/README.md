@@ -12,7 +12,8 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 | Livestream | Legt ein Medienobjekt mit dem RTSP-Stream an |
 | Eigene Kachel verwenden | Kachel mit Standbild, Status, Schwenk-Pfeilen und Knöpfen |
 | Standbild regelmäßig aktualisieren | Holt im Hintergrund ein Bild, das sofort angezeigt wird (Standard alle 30 Sekunden) |
-| Auch bei Akku-Kameras regelmäßig aktualisieren | Standard aus: Akku-Kameras holen das Standbild nur bei Alarm und auf Knopfdruck, damit der Akku hält |
+| Akku-Kameras: solange die Kachel geöffnet ist | Standard an: Akku-Kameras holen alle 30 s ein neues Bild, aber nur während jemand die Kachel ansieht |
+| Akku-Kameras: auch im Hintergrund | Standard aus: regelmäßig auch ohne geöffnete Kachel – leert den Akku schnell |
 | Bildqualität (lokal) | Hoch (Standard): volle Auflösung aus dem Hauptstream. Schnell: wie der Livestream, geringere Auflösung |
 | Quelle | Automatisch: lokal per FFmpeg aus dem Stream, wenn FFmpeg installiert ist, sonst über die Cloud. Klappt lokal nicht, wird 10 Minuten lang direkt die Cloud genutzt |
 | Pfad zu FFmpeg | Leer = automatisch suchen (z. B. /usr/bin/ffmpeg) |

@@ -50,6 +50,9 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 
 ## Changelog
 
+**Version 1.0 (Build 27)**
+- Akku-Kameras: Standbild wird jetzt regelmäßig aktualisiert, solange die Kachel geöffnet ist (Schalter, standardmäßig an) – im Hintergrund weiterhin nur, wenn ausdrücklich eingeschaltet
+
 **Version 1.0 (Build 26)**
 - Fehlersuche: Button „Akku-Werte aus der Cloud anzeigen“ (Befehl EZVIZ_GetBatteryInfo)
 

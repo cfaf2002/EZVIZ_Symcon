@@ -47,8 +47,13 @@
                 },
                 {
                     "type": "CheckBox",
+                    "name": "StandbildAkkuKachel",
+                    "caption": "Akku-Kameras: Bild regelmäßig aktualisieren, solange die Kachel geöffnet ist (empfohlen)"
+                },
+                {
+                    "type": "CheckBox",
                     "name": "StandbildAkku",
-                    "caption": "Auch bei Akku-Kameras regelmäßig aktualisieren (leert den Akku schneller)"
+                    "caption": "Akku-Kameras: auch im Hintergrund regelmäßig aktualisieren (leert den Akku schnell)"
                 },
                 {
                     "type": "Select",
