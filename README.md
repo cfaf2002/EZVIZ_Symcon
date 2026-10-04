@@ -1,7 +1,7 @@
 # EZVIZ für IP-Symcon
 
 [![IP-Symcon](https://img.shields.io/badge/IP--Symcon-ab%209.0-blue)](https://www.symcon.de)
-[![Modul-Version](https://img.shields.io/badge/Modul--Version-1.0%20%28Build%2030%29-green)](#changelog)
+[![Modul-Version](https://img.shields.io/badge/Modul--Version-1.0%20%28Build%2031%29-green)](#changelog)
 [![PHP](https://img.shields.io/badge/PHP-8.x-777BB4?logo=php&logoColor=white)](https://www.php.net)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow)](LICENSE)
 [![Kachel-Visualisierung](https://img.shields.io/badge/Kachel--Visualisierung-unterst%C3%BCtzt-orange)](Kamera/README.md#kachel)
@@ -63,6 +63,9 @@ EZVIZ ist eine Marke der Hangzhou EZVIZ Network Co., Ltd. Dieses Modul ist ein p
 | EZVIZ Push | EZVIZ | {B4259050-5300-47D8-9DAD-271C4AF28621} |
 
 ## Changelog
+
+**Version 1.0 (Build 31)**
+- Kamera: Kachel baut sich deutlich schneller auf. Das verkleinerte Kachelbild wird beim Speichern einmal fertig berechnet (nicht mehr bei jedem Öffnen) und ist kleiner. Beim Öffnen kommt zuerst ein schnelles Bild aus dem Unterstream, das scharfe Bild aus dem Hauptstream folgt automatisch. FFmpeg startet schneller (kürzere Stream-Analyse, ohne Ton).
 
 **Version 1.0 (Build 30)**
 - Kamera: Neue Einstellung „Bilder holen“. Standard „Nur bei geöffneter Kachel“: beim Öffnen der Kachel sofort ein frisches Bild, danach regelmäßig, solange sie offen ist – ohne geöffnete Kachel keine Abrufe (schont Kamera, Akku und Cloud). „Immer“ holt wie bisher auch im Hintergrund.

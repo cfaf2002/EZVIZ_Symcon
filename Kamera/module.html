@@ -191,8 +191,10 @@
             letzteAnfrage = Date.now() / 1000;
             document.getElementById('laedt').classList.add('an');
             requestAction('Kachel', JSON.stringify({ aktion: 'bild', auto: true, oeffnen: true }));
+            // Spinner spätestens nach 20 s ausblenden, falls kein Bild kommt
+            setTimeout(function () { document.getElementById('laedt').classList.remove('an'); }, 20000);
         }
-    }, 300);
+    }, 50);
     // Wird die Kachel nach dem Wegschalten wieder sichtbar, ebenfalls gleich aktualisieren
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden && (ezviz.intervall || 0) > 0 && !ezviz.schlaf && ezviz.online) {

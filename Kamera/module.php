@@ -591,6 +591,9 @@ class EZVIZKamera extends IPSModuleStrict
         @$this->UpdateFormField('StandbildInfo', 'caption', $this->StandbildInfoText());
     }
 
+    /** true = schnelles Bild beim Öffnen der Kachel (Unterstream, ein Versuch) */
+    private $Schnell = false;
+
     private function StandbildHolen(): bool
     {
         $Quelle = $this->ReadPropertyInteger('StandbildQuelle');
@@ -601,13 +604,18 @@ class EZVIZKamera extends IPSModuleStrict
         $Lokal = $Quelle === 2 || ($Quelle === 0 && !$this->HatAkku() && $this->ReadAttributeInteger('LokalPause') < time());
         if ($Lokal) {
             $Versuch = microtime(true);
-            $Bild = $this->StandbildLokal($Fehler);
-            if ($Bild === null && microtime(true) - $Versuch < 5) {
+            if ($this->Schnell) {
+                // Kachel wurde geöffnet: der Unterstream liefert in 1–2 Sekunden ein Bild
+                $Bild = $this->StandbildLokal($Fehler, true);
+            } else {
+                $Bild = $this->StandbildLokal($Fehler);
+            }
+            if ($Bild === null && !$this->Schnell && microtime(true) - $Versuch < 5) {
                 // zweiter Versuch – die Kamera lässt oft nur eine Verbindung gleichzeitig zu
                 usleep(500000);
                 $Bild = $this->StandbildLokal($Fehler);
             }
-            if ($Bild === null && $this->ReadPropertyInteger('StandbildQualitaet') === 0) {
+            if ($Bild === null && !$this->Schnell && $this->ReadPropertyInteger('StandbildQualitaet') === 0) {
                 // Hauptstream klappt nicht (manche Kameras/Firmwares) – mit dem Livestream-Pfad versuchen
                 $Bild = $this->StandbildLokal($Fehler, true);
             }
@@ -645,8 +653,13 @@ class EZVIZKamera extends IPSModuleStrict
         if ($Weg === 'lokal') {
             $this->WriteAttributeString('LokalFehler', '');
         }
-        $this->SendDebug('Standbild', 'aktualisiert (' . $Weg . ', ' . round(strlen($Bild) / 1024) . ' KB)', 0);
+        $this->SendDebug('Standbild', 'aktualisiert (' . $Weg . ($this->Schnell ? ', schnell' : '') . ', ' . round(strlen($Bild) / 1024) . ' KB)', 0);
+        $this->KachelBildSpeichern('Standbild', base64_encode($Bild));
         $this->KachelSenden(true);
+        if ($this->Schnell && $Weg === 'lokal' && $this->ReadPropertyInteger('StandbildQualitaet') === 0 && $this->ReadPropertyInteger('Stream') !== 1) {
+            // Das schnelle Bild ist schon zu sehen – das scharfe Bild aus dem Hauptstream kommt gleich hinterher
+            $this->SetTimerInterval('StandbildSofort', 1000);
+        }
         return true;
     }
 
@@ -936,6 +949,7 @@ class EZVIZKamera extends IPSModuleStrict
         $ID = $this->Medium('Alarmbild', MEDIATYPE_IMAGE, 'Alarmbild', 41);
         IPS_SetMediaFile($ID, 'media/EZVIZ_' . $this->InstanceID . '.jpg', false);
         IPS_SetMediaContent($ID, base64_encode($Bild));
+        $this->KachelBildSpeichern('Alarmbild', base64_encode($Bild));
         $this->KachelSenden(true);
     }
 
@@ -982,8 +996,10 @@ class EZVIZKamera extends IPSModuleStrict
         $Datei = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ezviz_' . $this->InstanceID . '.jpg';
         @unlink($Datei);
 
-        $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -timeout 8000000 -i ' . escapeshellarg($Url)
-            . ' -frames:v 1 -q:v 2 -y ' . escapeshellarg($Datei);
+        $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -timeout 8000000'
+            // Stream nur kurz analysieren (Standard wären bis zu 5 Sekunden), Ton gar nicht erst auswerten
+            . ' -probesize 1000000 -analyzeduration 1000000 -fflags nobuffer -i ' . escapeshellarg($Url)
+            . ' -an -sn -dn -frames:v 1 -q:v 2 -y ' . escapeshellarg($Datei);
         $Start = microtime(true);
         [$Code, $Ausgabe] = self::Ausfuehren($Befehl, $Einfach ? 8 : 12);
         $Bild = is_file($Datei) ? file_get_contents($Datei) : false;
@@ -1294,11 +1310,15 @@ class EZVIZKamera extends IPSModuleStrict
                 continue;
             }
             if ($MitBild) {
-                $Inhalt = (string) @IPS_GetMediaContent($ID);
+                $Inhalt = $this->KachelBildLesen($Ident, (int) $Zeit);
                 if ($Inhalt === '') {
-                    continue;
+                    $Inhalt = (string) @IPS_GetMediaContent($ID);
+                    if ($Inhalt === '') {
+                        continue;
+                    }
+                    $Inhalt = $this->KachelBildSpeichern($Ident, $Inhalt);
                 }
-                $K['bild'] = $this->KachelBild($Inhalt);
+                $K['bild'] = $Inhalt;
             }
             $K['bildZeit'] = $Zeit;
             $K['bildArt'] = $Ident;
@@ -1314,12 +1334,39 @@ class EZVIZKamera extends IPSModuleStrict
     }
 
     /**
+     * Fertig verkleinertes Kachelbild ablegen – so muss beim Öffnen der Kachel nichts mehr umgerechnet werden.
+     */
+    private function KachelBildSpeichern(string $Ident, string $Base64): string
+    {
+        $Klein = $this->KachelBild($Base64);
+        if ($Klein !== '') {
+            @file_put_contents($this->KachelBildDatei($Ident), $Klein);
+        }
+        return $Klein;
+    }
+
+    private function KachelBildLesen(string $Ident, int $Zeit): string
+    {
+        $Datei = $this->KachelBildDatei($Ident);
+        // nur nehmen, wenn es nicht älter als das Bild selbst ist
+        if (!is_file($Datei) || (int) @filemtime($Datei) < $Zeit) {
+            return '';
+        }
+        return (string) @file_get_contents($Datei);
+    }
+
+    private function KachelBildDatei(string $Ident): string
+    {
+        return sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ezviz_kachel_' . $this->InstanceID . '_' . $Ident . '.b64';
+    }
+
+    /**
      * Verkleinert ein Bild für die Kachel (Symcon erlaubt dort höchstens 1 MB).
      * Das gespeicherte Medienobjekt behält die volle Auflösung.
      */
     private function KachelBild(string $Base64): string
     {
-        if (strlen($Base64) <= 350000 || !function_exists('imagecreatefromstring')) {
+        if (strlen($Base64) <= 200000 || !function_exists('imagecreatefromstring')) {
             return strlen($Base64) <= 900000 ? $Base64 : '';
         }
         $Quelle = @imagecreatefromstring((string) base64_decode($Base64));
@@ -1328,7 +1375,7 @@ class EZVIZKamera extends IPSModuleStrict
         }
         $B = imagesx($Quelle);
         $H = imagesy($Quelle);
-        foreach ([[1280, 80], [960, 72], [640, 65]] as [$Breite, $Qualitaet]) {
+        foreach ([[1024, 78], [800, 72], [640, 65]] as [$Breite, $Qualitaet]) {
             $Ziel = $Quelle;
             if ($B > $Breite) {
                 $NeuH = (int) round($H * $Breite / $B);
@@ -1338,7 +1385,7 @@ class EZVIZKamera extends IPSModuleStrict
             ob_start();
             imagejpeg($Ziel, null, $Qualitaet);
             $Neu = base64_encode((string) ob_get_clean());
-            if (strlen($Neu) <= 350000) {
+            if (strlen($Neu) <= 200000) {
                 return $Neu;
             }
         }
@@ -1380,10 +1427,12 @@ class EZVIZKamera extends IPSModuleStrict
                     if ($Ms <= 0 || $Alter < 10) {
                         return;
                     }
+                    $this->Schnell = true;
                 } elseif (!empty($A['auto']) && ($Ms <= 0 || $Alter < $Ms / 1000 - 5)) {
                     return;
                 }
                 $this->UpdateSnapshot();
+                $this->Schnell = false;
                 break;
             case 'schwenken':
                 $this->Move((string) ($A['richtung'] ?? ''));
