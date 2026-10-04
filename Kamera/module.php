@@ -56,6 +56,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyBoolean('StandbildAkkuKachel', true);
         // 1 = Bilder nur holen, solange eine Kachel geöffnet ist (spart Zugriffe), 0 = auch im Hintergrund
         $this->RegisterPropertyInteger('StandbildModus', 1);
+        $this->RegisterPropertyInteger('StandbildHintergrund', 10);
         $this->RegisterPropertyInteger('StandbildQualitaet', 0);
         $this->RegisterPropertyString('FFmpeg', '');
         $this->RegisterPropertyBoolean('Kachel', true);
@@ -577,7 +578,8 @@ class EZVIZKamera extends IPSModuleStrict
         [$Ms, $Grund] = $this->AutoIntervall();
         $Lauf = $this->ReadAttributeInteger('LetzterLauf');
         $Auto = $Ms > 0
-            ? 'Automatisch alle ' . ($Ms / 1000) . ' s (Timer ' . ($this->GetTimerInterval('Standbild') > 0 ? 'läuft' : 'steht!') . ', letzter Lauf ' . ($Lauf > 0 ? date('H:i:s', $Lauf) : 'noch nie') . ')'
+            ? 'Automatisch alle ' . ($Ms >= 60000 ? ($Ms / 60000) . ' min im Hintergrund' : ($Ms / 1000) . ' s')
+              . ($this->ReadPropertyInteger('StandbildModus') === 1 && $this->KachelIntervall() > 0 ? ', bei geöffneter Kachel alle ' . ($this->KachelIntervall() / 1000) . ' s' : '') . ' (Timer ' . ($this->GetTimerInterval('Standbild') > 0 ? 'läuft' : 'steht!') . ', letzter Lauf ' . ($Lauf > 0 ? date('H:i:s', $Lauf) : 'noch nie') . ')'
             : 'Automatisch aus: ' . $Grund;
         return 'Standbild: ' . ($Zeit > 0 ? 'zuletzt ' . date('d.m. H:i:s', $Zeit) . ($Weg !== '' ? ' (' . $Weg . ')' : '') : 'noch keins')
             . ($Fehler !== '' ? ' – letzter Versuch ' . $Fehler : '') . ' · ' . $Auto;
@@ -1220,7 +1222,15 @@ class EZVIZKamera extends IPSModuleStrict
             return [0, 'Intervall ist 0 (nur bei Alarm/auf Knopfdruck)'];
         }
         if ($this->ReadPropertyInteger('StandbildModus') === 1) {
-            return [0, 'nur bei geöffneter Kachel (spart Zugriffe)'];
+            // Zusätzlich selten im Hintergrund, damit beim Öffnen der Kachel schon ein recht aktuelles Bild da ist
+            $Minuten = $this->ReadPropertyInteger('StandbildHintergrund');
+            if ($Minuten <= 0) {
+                return [0, 'nur bei geöffneter Kachel (spart Zugriffe)'];
+            }
+            if ($this->HatAkku() && !$this->ReadPropertyBoolean('StandbildAkku')) {
+                return [0, 'Akku-Kamera – nur bei geöffneter Kachel (schont den Akku)'];
+            }
+            return [max(1, $Minuten) * 60000, ''];
         }
         // Akku-Kameras: regelmäßige Fotos würden den Akku leeren – nur bei Alarm/auf Knopfdruck
         if ($this->HatAkku() && !$this->ReadPropertyBoolean('StandbildAkku')) {
@@ -1236,7 +1246,7 @@ class EZVIZKamera extends IPSModuleStrict
     private function KachelIntervall(): int
     {
         [$Ms] = $this->AutoIntervall();
-        if ($Ms > 0) {
+        if ($Ms > 0 && $this->ReadPropertyInteger('StandbildModus') === 0) {
             return $Ms;
         }
         if (!$this->ReadPropertyBoolean('Standbild') || $this->ReadPropertyInteger('StandbildIntervall') <= 0) {

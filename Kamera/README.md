@@ -13,6 +13,7 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 | Eigene Kachel verwenden | Kachel mit Standbild, Status, Schwenk-Pfeilen und Knöpfen |
 | Standbild regelmäßig aktualisieren | Holt regelmäßig ein neues Bild (Standard alle 30 Sekunden) |
 | Bilder holen | **Nur bei geöffneter Kachel** (Standard): beim Öffnen sofort ein frisches Bild, dann regelmäßig, solange die Kachel offen ist – sonst keine Abrufe. **Immer**: auch im Hintergrund, das Medienobjekt ist stets aktuell (z. B. für Skripte) |
+| Zusätzlich im Hintergrund alle … Minuten | Nur bei „Nur bei geöffneter Kachel“: Netz-Kameras holen auch ohne geöffnete Kachel regelmäßig ein Bild (Standard 10 Minuten, 0 = aus). Beim Öffnen ist dann sofort ein recht aktuelles Bild da. Akku-Kameras nicht |
 | Akku-Kameras: solange die Kachel geöffnet ist | Standard an: Akku-Kameras holen alle 30 s ein neues Bild, aber nur während jemand die Kachel ansieht |
 | Akku-Kameras: auch im Hintergrund | Standard aus: regelmäßig auch ohne geöffnete Kachel – leert den Akku schnell |
 | Bildqualität (lokal) | Hoch (Standard): volle Auflösung aus dem Hauptstream. Schnell: wie der Livestream, geringere Auflösung |
