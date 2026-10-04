@@ -4,9 +4,9 @@
     "author": "Armin Frohwerk",
     "url": "https://github.com/cfaf2002/EZVIZ_Symcon",
     "compatibility": {
-        "version": "8.1"
+        "version": "9.0"
     },
     "version": "1.0",
-    "build": 28,
-    "date": 1791029847
+    "build": 30,
+    "date": 1791058499
 }

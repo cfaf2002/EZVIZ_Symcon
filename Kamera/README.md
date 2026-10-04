@@ -11,7 +11,8 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 | Verifizierungscode | 6 Großbuchstaben vom Aufkleber der Kamera – RTSP-Passwort und Schlüssel für verschlüsselte Alarmbilder |
 | Livestream | Legt ein Medienobjekt mit dem RTSP-Stream an |
 | Eigene Kachel verwenden | Kachel mit Standbild, Status, Schwenk-Pfeilen und Knöpfen |
-| Standbild regelmäßig aktualisieren | Holt im Hintergrund ein Bild, das sofort angezeigt wird (Standard alle 30 Sekunden) |
+| Standbild regelmäßig aktualisieren | Holt regelmäßig ein neues Bild (Standard alle 30 Sekunden) |
+| Bilder holen | **Nur bei geöffneter Kachel** (Standard): beim Öffnen sofort ein frisches Bild, dann regelmäßig, solange die Kachel offen ist – sonst keine Abrufe. **Immer**: auch im Hintergrund, das Medienobjekt ist stets aktuell (z. B. für Skripte) |
 | Akku-Kameras: solange die Kachel geöffnet ist | Standard an: Akku-Kameras holen alle 30 s ein neues Bild, aber nur während jemand die Kachel ansieht |
 | Akku-Kameras: auch im Hintergrund | Standard aus: regelmäßig auch ohne geöffnete Kachel – leert den Akku schnell |
 | Bildqualität (lokal) | Hoch (Standard): volle Auflösung aus dem Hauptstream. Schnell: wie der Livestream, geringere Auflösung |
@@ -31,7 +32,7 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 
 ## Schneller Bildaufbau
 
-- **Standbild** statt Livestream für den schnellen Blick: Es wird im Hintergrund geholt und liegt fertig vor. Bei einem neuen Alarm und nach dem Schwenken wird es sofort erneuert, im Schlafmodus nicht.
+- **Standbild** statt Livestream für den schnellen Blick: Es wird beim Öffnen der Kachel sofort geholt (oder bei „Immer“ im Hintergrund). Bei einem neuen Alarm und nach dem Schwenken wird es sofort erneuert, im Schlafmodus nicht.
 - **Lokal per FFmpeg** ist am schnellsten und belastet die Cloud nicht. Unter Linux/Raspberry Pi: `sudo apt install ffmpeg`. Auf der Synology das Paket **ffmpeg7** der SynoCommunity installieren (Paket-Zentrum → Einstellungen → Paketquellen: `https://packages.synocommunity.com`) – das Modul findet es automatisch. Läuft Symcon im Docker-Container: die Datei `ffmpeg` (statische Version von johnvansickle.com/ffmpeg, passend zum Prozessor) per File Station in den Ordner legen, den der Container als Symcon-Datenordner eingebunden hat – das Modul findet sie dort automatisch und macht sie ausführbar. Auf der SymBox ist FFmpeg meist nicht verfügbar – dann wird die Cloud genutzt (die Kamera macht dafür ein Foto).
 - **Unterstream** für den Livestream: geringere Auflösung, startet deutlich schneller.
 - Langsam bleibt der Livestream, wenn die Kamera H.265 sendet – dann in der EZVIZ-App (falls angeboten) auf H.264 umstellen.
@@ -39,6 +40,9 @@ Eine EZVIZ-Kamera als Instanz in IP-Symcon.
 Kommt kein Livebild, die Adresse zuerst mit VLC testen – sie steht im Button „Stream-Adresse anzeigen“.
 
 ## Kachel
+
+- Passt sich automatisch an das Design der Kachel-Visualisierung an (Farben, Hell/Dunkel)
+- Knopf **„Live“** unten rechts im Bild öffnet den Livestream groß (nur wenn „Livestream als Medienobjekt anlegen“ an ist)
 
 - Zeigt das neueste Standbild (ohne Standbild das letzte Alarmbild) mit Alter, Online-Punkt und „Bewegung“-Hinweis
 - Pfeile im Bild schwenken die Kamera, danach kommt gleich ein neues Bild

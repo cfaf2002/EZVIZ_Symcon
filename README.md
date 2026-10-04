@@ -1,5 +1,11 @@
 # EZVIZ für IP-Symcon
 
+[![IP-Symcon](https://img.shields.io/badge/IP--Symcon-ab%209.0-blue)](https://www.symcon.de)
+[![Modul-Version](https://img.shields.io/badge/Modul--Version-1.0%20%28Build%2030%29-green)](#changelog)
+[![PHP](https://img.shields.io/badge/PHP-8.x-777BB4?logo=php&logoColor=white)](https://www.php.net)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow)](LICENSE)
+[![Kachel-Visualisierung](https://img.shields.io/badge/Kachel--Visualisierung-unterst%C3%BCtzt-orange)](Kamera/README.md#kachel)
+
 Bindet EZVIZ-Kameras (z. B. C8C) in IP-Symcon ein: Status, Bewegungserkennung, Schlafmodus und weitere Schalter über die EZVIZ-Cloud, Schwenken bei Schwenk-/Neigekameras, letzter Alarm mit Bild – und der Livestream lokal per RTSP.
 
 > **Hinweis:** EZVIZ bietet für Endkunden keine offizielle Schnittstelle. Das Modul nutzt die Schnittstelle der EZVIZ-App, steht in keiner Verbindung zu EZVIZ bzw. Hikvision und ist nur für die private Nutzung gedacht. Ändert EZVIZ die Schnittstelle, kann das Modul ohne Vorwarnung aufhören zu funktionieren.
@@ -15,7 +21,7 @@ Bindet EZVIZ-Kameras (z. B. C8C) in IP-Symcon ein: Status, Bewegungserkennung, S
 
 ## Voraussetzungen
 
-- IP-Symcon ab Version 8.1
+- IP-Symcon ab Version 9.0 (Kachel nutzt die Designfarben und openObject der Kachel-Visualisierung)
 - EZVIZ-Konto mit E-Mail/Benutzername und Passwort
 - Für den Livestream: Kamera im selben Netz wie Symcon, Verifizierungscode vom Aufkleber der Kamera
 
@@ -39,6 +45,14 @@ EZVIZ Kamera  ───── RTSP (lokal) ─────────►  Kamer
 
 Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Geräteliste + eine Meldungsliste pro Intervall). Die Kameras holen sich ihre Daten anschließend selbst beim Konto ab.
 
+## Lizenz
+
+Dieses Modul steht unter der [MIT-Lizenz](LICENSE) – jeder darf es frei nutzen, ändern und weitergeben, solange der Lizenzhinweis erhalten bleibt.
+
+Die Schnittstelle der EZVIZ-Cloud und des Push-Kanals wurde anhand der Python-Bibliothek [pyEzvizApi](https://github.com/RenierM26/pyEzvizApi) (Apache-Lizenz 2.0) nachvollzogen. Es wurde kein Code übernommen; das Modul ist eine eigenständige PHP-Umsetzung.
+
+EZVIZ ist eine Marke der Hangzhou EZVIZ Network Co., Ltd. Dieses Modul ist ein privates Projekt ohne Verbindung zu EZVIZ oder Hikvision.
+
 ## GUIDs
 
 | Modul | Präfix | GUID |
@@ -49,6 +63,16 @@ Das Konto fragt alle Geräte und die neuesten Alarme gemeinsam ab (eine Gerätel
 | EZVIZ Push | EZVIZ | {B4259050-5300-47D8-9DAD-271C4AF28621} |
 
 ## Changelog
+
+**Version 1.0 (Build 30)**
+- Kamera: Neue Einstellung „Bilder holen“. Standard „Nur bei geöffneter Kachel“: beim Öffnen der Kachel sofort ein frisches Bild, danach regelmäßig, solange sie offen ist – ohne geöffnete Kachel keine Abrufe (schont Kamera, Akku und Cloud). „Immer“ holt wie bisher auch im Hintergrund.
+
+**Version 1.0 (Build 29)**
+- Symcon 9.0: Kachel übernimmt die Designfarben der Kachel-Visualisierung (`--accent-color`, `--content-color`, `--card-color`) statt eigener Hell/Dunkel-Erkennung – eigene Designs und feste Hell/Dunkel-Einstellungen der Visualisierung werden mitgenommen
+- Kachel mit Font-Awesome-Symbolen der Visualisierung (Akkustand in Stufen, Pfeile, Knöpfe)
+- Neuer Knopf „Live“ im Bild: öffnet den Livestream groß in der Visualisierung (`openObject`)
+- Mindestversion IP-Symcon 9.0
+- Lizenz: MIT (Datei LICENSE), Badges in der README
 
 **Version 1.0 (Build 28)**
 - Standbild lokal: klappt der Hauptstream nicht, wird automatisch der Livestream-Pfad versucht, bevor die Cloud genutzt wird; der Grund eines lokalen Fehlschlags wird mit angezeigt

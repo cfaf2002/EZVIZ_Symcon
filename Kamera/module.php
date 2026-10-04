@@ -54,6 +54,8 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyInteger('StandbildIntervall', 30);
         $this->RegisterPropertyBoolean('StandbildAkku', false);
         $this->RegisterPropertyBoolean('StandbildAkkuKachel', true);
+        // 1 = Bilder nur holen, solange eine Kachel geöffnet ist (spart Zugriffe), 0 = auch im Hintergrund
+        $this->RegisterPropertyInteger('StandbildModus', 1);
         $this->RegisterPropertyInteger('StandbildQualitaet', 0);
         $this->RegisterPropertyString('FFmpeg', '');
         $this->RegisterPropertyBoolean('Kachel', true);
@@ -1201,9 +1203,12 @@ class EZVIZKamera extends IPSModuleStrict
         if ($Sekunden <= 0) {
             return [0, 'Intervall ist 0 (nur bei Alarm/auf Knopfdruck)'];
         }
+        if ($this->ReadPropertyInteger('StandbildModus') === 1) {
+            return [0, 'nur bei geöffneter Kachel (spart Zugriffe)'];
+        }
         // Akku-Kameras: regelmäßige Fotos würden den Akku leeren – nur bei Alarm/auf Knopfdruck
         if ($this->HatAkku() && !$this->ReadPropertyBoolean('StandbildAkku')) {
-            return [0, 'Akku-Kamera – unter „Standbild“ „Auch bei Akku-Kameras regelmäßig aktualisieren“ einschalten'];
+            return [0, 'Akku-Kamera – unter „Standbild“ „Akku-Kameras: auch im Hintergrund regelmäßig aktualisieren“ einschalten'];
         }
         return [max(10, $Sekunden) * 1000, ''];
     }
@@ -1218,10 +1223,14 @@ class EZVIZKamera extends IPSModuleStrict
         if ($Ms > 0) {
             return $Ms;
         }
-        if ($this->HatAkku() && $this->ReadPropertyBoolean('Standbild') && $this->ReadPropertyBoolean('StandbildAkkuKachel')) {
-            return max(30, $this->ReadPropertyInteger('StandbildIntervall')) * 1000;
+        if (!$this->ReadPropertyBoolean('Standbild') || $this->ReadPropertyInteger('StandbildIntervall') <= 0) {
+            return 0;
         }
-        return 0;
+        if ($this->HatAkku()) {
+            return $this->ReadPropertyBoolean('StandbildAkkuKachel') ? max(30, $this->ReadPropertyInteger('StandbildIntervall')) * 1000 : 0;
+        }
+        // „Nur bei geöffneter Kachel“: die Kachel fordert die Bilder selbst an
+        return max(10, $this->ReadPropertyInteger('StandbildIntervall')) * 1000;
     }
 
     private function StandbildTimer(): void
@@ -1266,6 +1275,7 @@ class EZVIZKamera extends IPSModuleStrict
             'fehler'     => '',
             'intervall'  => (int) ($this->KachelIntervall() / 1000),
             'hatLicht'   => $this->ReadPropertyBoolean('LichtSteuerung'),
+            'liveID'     => $this->LiveID(),
             'licht'      => (bool) $Wert('Licht', false)
         ];
         // Das neuere Bild wählen (Standbild oder Alarmbild) – Zeit und Art immer mitschicken,
@@ -1335,6 +1345,18 @@ class EZVIZKamera extends IPSModuleStrict
         return strlen($Neu) <= 900000 ? $Neu : '';
     }
 
+    /**
+     * ID des Livestream-Medienobjekts (für openObject in der Kachel), 0 wenn keins.
+     */
+    private function LiveID(): int
+    {
+        if (!$this->ReadPropertyBoolean('Livestream')) {
+            return 0;
+        }
+        $ID = @IPS_GetObjectIDByIdent('Livestream', $this->InstanceID);
+        return ($ID !== false && IPS_MediaExists($ID)) ? (int) $ID : 0;
+    }
+
     private function KachelSenden(bool $MitBild = false): void
     {
         if ($this->ReadPropertyBoolean('Kachel')) {
@@ -1352,7 +1374,13 @@ class EZVIZKamera extends IPSModuleStrict
             case 'bild':
                 // Automatische Anfragen der Kachel: nicht öfter als im Intervall (mehrere Geräte offen)
                 $Ms = $this->KachelIntervall();
-                if (!empty($A['auto']) && ($Ms <= 0 || time() - $this->ReadAttributeInteger('StandbildZeit') < $Ms / 1000 - 5)) {
+                $Alter = time() - $this->ReadAttributeInteger('StandbildZeit');
+                if (!empty($A['oeffnen'])) {
+                    // Kachel wurde gerade geöffnet: frisches Bild, wenn das vorhandene älter als 10 s ist
+                    if ($Ms <= 0 || $Alter < 10) {
+                        return;
+                    }
+                } elseif (!empty($A['auto']) && ($Ms <= 0 || $Alter < $Ms / 1000 - 5)) {
                     return;
                 }
                 $this->UpdateSnapshot();

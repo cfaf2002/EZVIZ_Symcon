@@ -1,30 +1,31 @@
 <style>
+    /*
+     * Farben aus dem Design der Kachel-Visualisierung (Symcon ≥ 8.0):
+     * --content-color (Text), --accent-color (Akzent), --card-color (Kachel).
+     * Hell/Dunkel und eigene Designs der Visualisierung werden so automatisch übernommen.
+     */
     .ezviz {
-        --ez-akzent: #2f8fd8;
+        --ez-text: var(--content-color, #f2f2f2);
+        --ez-akzent: var(--accent-color, #2f8fd8);
+        --ez-karte: var(--card-color, #2b2d31);
         --ez-alarm: #e5574f;
         --ez-gruen: #3cb371;
-        --ez-text: #f2f2f2;
-        --ez-leise: rgba(255, 255, 255, 0.62);
-        --ez-flaeche: rgba(255, 255, 255, 0.08);
-        --ez-flaeche-hover: rgba(255, 255, 255, 0.14);
-        --ez-rand: rgba(255, 255, 255, 0.18);
+        --ez-gelb: #f0b429;
+        --ez-leise: color-mix(in srgb, var(--ez-text) 62%, transparent);
+        --ez-flaeche: color-mix(in srgb, var(--ez-text) 8%, transparent);
+        --ez-flaeche-hover: color-mix(in srgb, var(--ez-text) 14%, transparent);
+        --ez-rand: color-mix(in srgb, var(--ez-text) 18%, transparent);
         color: var(--ez-text);
-    }
-    .ezviz.hell {
-        --ez-text: #1d1d1f;
-        --ez-leise: rgba(0, 0, 0, 0.55);
-        --ez-flaeche: rgba(0, 0, 0, 0.05);
-        --ez-flaeche-hover: rgba(0, 0, 0, 0.09);
-        --ez-rand: rgba(0, 0, 0, 0.15);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: transparent; color: inherit; }
-    body, button { font-family: "Segoe UI", Roboto, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+    body, button { font-family: inherit; }
     .ezviz { display: flex; flex-direction: column; gap: 10px; padding: 44px 4px 6px; height: 100%; font-size: 14px; }
     .bild { position: relative; flex: 1; min-height: 120px; border-radius: 12px; overflow: hidden; background: #111; }
     .bild img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
     .bild img.da { display: block; }
-    .leer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.6); text-align: center; padding: 12px; }
+    .leer { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; color: rgba(255,255,255,0.6); text-align: center; padding: 12px; }
+    .leer i { font-size: 28px; }
     .oben { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none; }
     .marke { background: rgba(0, 0, 0, 0.55); color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 12px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
     .marke .punkt { width: 8px; height: 8px; border-radius: 50%; background: var(--ez-gruen); }
@@ -34,81 +35,77 @@
     .zeit { margin-left: auto; }
     .marke.akku { display: none; }
     .marke.akku.da { display: flex; }
+    .marke.akku i { color: var(--ez-gruen); }
+    .marke.akku.mittel i { color: var(--ez-gelb); }
     .marke.akku.schwach { background: var(--ez-alarm); }
-    .batterie { position: relative; width: 20px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px; }
-    .batterie::after { content: ''; position: absolute; right: -4px; top: 2px; width: 2px; height: 3px; background: currentColor; border-radius: 0 1px 1px 0; }
-    .batterie i { position: absolute; left: 1px; top: 1px; bottom: 1px; border-radius: 1px; background: var(--ez-gruen); }
-    .marke.akku.mittel .batterie i { background: #f0b429; }
-    .marke.akku.schwach .batterie i { background: #fff; }
+    .marke.akku.schwach i { color: #fff; }
     .warnung { display: none; background: var(--ez-alarm); color: #fff; border-radius: 10px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
-    .warnung.an { display: block; }
-    .pfeil { position: absolute; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 18px; cursor: pointer; display: none; align-items: center; justify-content: center; }
-    .pfeil:hover { background: rgba(0, 0, 0, 0.65); }
-    .pfeil:active { transform: scale(0.92); }
+    .warnung.an { display: flex; gap: 8px; align-items: center; }
+    .rund { position: absolute; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .rund:hover { background: rgba(0, 0, 0, 0.65); }
+    .rund:active { transform: scale(0.92); }
+    .pfeil { display: none; }
     .ptz .pfeil { display: flex; }
     .pfeil.links { left: 8px; top: 50%; margin-top: -20px; }
     .pfeil.rechts { right: 8px; top: 50%; margin-top: -20px; }
     .pfeil.hoch { top: 40px; left: 50%; margin-left: -20px; }
     .pfeil.runter { bottom: 8px; left: 50%; margin-left: -20px; }
-    .laedt { position: absolute; right: 10px; bottom: 10px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: dreh 0.8s linear infinite; display: none; }
+    .live { right: 8px; bottom: 8px; width: auto; padding: 0 12px; border-radius: 20px; gap: 6px; font-size: 13px; display: none; }
+    .live.da { display: flex; }
+    .laedt { position: absolute; left: 10px; bottom: 10px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: dreh 0.8s linear infinite; display: none; }
     .laedt.an { display: block; }
     @keyframes dreh { to { transform: rotate(360deg); } }
-    .knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
-    .knopf { border: 1px solid var(--ez-rand); background: var(--ez-flaeche); color: inherit; border-radius: 10px; height: 38px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
+    .knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+    .knopf { border: 1px solid var(--ez-rand); background: var(--ez-flaeche); color: inherit; border-radius: 10px; height: 38px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 6px; }
     .knopf:hover { background: var(--ez-flaeche-hover); }
     .knopf:active { transform: scale(0.97); }
     .knopf.an { background: var(--ez-akzent); border-color: transparent; color: #fff; }
     .knopf[hidden] { display: none; }
+    .ersatz { display: none; }
+    .ohne-fa .ersatz { display: inline; }
+    .ohne-fa .ezviz i { display: none; }
     .info { font-size: 12px; color: var(--ez-leise); min-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 
 <div class="ezviz" lang="de">
     <div class="bild" id="bild">
         <img id="foto" alt="">
-        <div class="leer" id="leer">Noch kein Bild – „Bild“ antippen</div>
+        <div class="leer" id="leer"><i class="fa-light fa-camera"></i><span id="leerText">Noch kein Bild – „Bild“ antippen</span></div>
         <div class="oben">
             <span class="marke" id="status"><span class="punkt"></span><span id="name"></span></span>
-            <span class="marke akku" id="akku" title="Akku"><span class="batterie"><i id="akkuFuell"></i></span><span id="akkuText"></span></span>
-            <span class="marke alarm" id="bewegung">Bewegung</span>
+            <span class="marke akku" id="akku" title="Akku"><i id="akkuSymbol" class="fa-light fa-battery-full"></i><span id="akkuText"></span></span>
+            <span class="marke alarm" id="bewegung"><i class="fa-light fa-person-walking"></i>Bewegung</span>
             <span class="marke zeit" id="zeit"></span>
         </div>
-        <button class="pfeil hoch" onclick="schwenken('up')" title="Hoch">▲</button>
-        <button class="pfeil links" onclick="schwenken('left')" title="Links">◀</button>
-        <button class="pfeil rechts" onclick="schwenken('right')" title="Rechts">▶</button>
-        <button class="pfeil runter" onclick="schwenken('down')" title="Runter">▼</button>
+        <button class="rund pfeil hoch" onclick="schwenken('up')" title="Hoch"><i class="fa-light fa-chevron-up"></i><span class="ersatz">▲</span></button>
+        <button class="rund pfeil links" onclick="schwenken('left')" title="Links"><i class="fa-light fa-chevron-left"></i><span class="ersatz">◀</span></button>
+        <button class="rund pfeil rechts" onclick="schwenken('right')" title="Rechts"><i class="fa-light fa-chevron-right"></i><span class="ersatz">▶</span></button>
+        <button class="rund pfeil runter" onclick="schwenken('down')" title="Runter"><i class="fa-light fa-chevron-down"></i><span class="ersatz">▼</span></button>
+        <button class="rund live" id="live" onclick="liveOeffnen()" title="Livestream öffnen"><i class="fa-light fa-video"></i>Live</button>
         <div class="laedt" id="laedt"></div>
     </div>
-    <div class="warnung" id="warnung"></div>
+    <div class="warnung" id="warnung"><i class="fa-light fa-battery-exclamation"></i><span id="warnungText"></span></div>
     <div class="info" id="info"></div>
     <div class="knoepfe">
-        <button class="knopf" onclick="aktion('bild')">⟳ Bild</button>
-        <button class="knopf" id="schutz" onclick="aktion('schutz')">Erkennung</button>
-        <button class="knopf" id="schlaf" onclick="aktion('schlaf')">Schlafmodus</button>
-        <button class="knopf" id="licht" onclick="aktion('licht')" hidden>💡 Licht</button>
+        <button class="knopf" onclick="aktion('bild')"><i class="fa-light fa-arrows-rotate"></i>Bild</button>
+        <button class="knopf" id="schutz" onclick="aktion('schutz')"><i class="fa-light fa-shield-halved"></i>Erkennung</button>
+        <button class="knopf" id="schlaf" onclick="aktion('schlaf')"><i class="fa-light fa-eye-slash"></i>Schlafmodus</button>
+        <button class="knopf" id="licht" onclick="aktion('licht')" hidden><i class="fa-light fa-lightbulb"></i>Licht</button>
     </div>
 </div>
 
 <script>
     var ezviz = {};
 
-    // Hell/Dunkel anhand des Hintergrunds der Symcon-Kachel erkennen
-    (function () {
-        function hell(farbe) {
-            var m = (farbe || '').match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
-            if (!m || (m[4] !== undefined && parseFloat(m[4]) < 0.3)) return null;
-            return (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) > 150;
-        }
-        var ergebnis = null;
-        try {
-            var el = window.frameElement;
-            while (el && ergebnis === null) {
-                ergebnis = hell(window.parent.getComputedStyle(el).backgroundColor);
-                el = el.parentElement;
-            }
-        } catch (e) { }
-        if (ergebnis === null) ergebnis = hell(getComputedStyle(document.body).backgroundColor);
-        if (ergebnis) document.querySelector('.ezviz').classList.add('hell');
-    })();
+    // Symbole kommen aus Font Awesome der Visualisierung. Fehlt die Schrift (z. B. ältere Oberfläche),
+    // werden ersatzweise einfache Zeichen gezeigt, damit keine leeren Knöpfe entstehen.
+    function symbolePruefen() {
+        var probe = document.querySelector('.knopf i');
+        var breit = probe ? probe.getBoundingClientRect().width : 0;
+        document.body.classList.toggle('ohne-fa', breit < 2);
+    }
+    window.addEventListener('load', function () { setTimeout(symbolePruefen, 300); });
+    setTimeout(symbolePruefen, 1500);
 
     function handleMessage(data) {
         var d;
@@ -138,24 +135,28 @@
         schlaf.hidden = !ezviz.hatSchlaf;
         schlaf.classList.toggle('an', !!ezviz.schlaf);
         if (ezviz.schlaf && !ezviz.bild) {
-            document.getElementById('leer').textContent = 'Kamera im Schlafmodus';
+            document.getElementById('leerText').textContent = 'Kamera im Schlafmodus';
         }
         var licht = document.getElementById('licht');
         licht.hidden = !ezviz.hatLicht;
         licht.classList.toggle('an', !!ezviz.licht);
+        // Livestream: öffnet das Medienobjekt groß in der Visualisierung (openObject, Symcon ≥ 8.2)
+        document.getElementById('live').classList.toggle('da', !!ezviz.liveID && typeof openObject === 'function');
+
         var akku = document.getElementById('akku');
         var hatAkku = ezviz.akku !== null && ezviz.akku !== undefined;
         akku.classList.toggle('da', hatAkku);
         if (hatAkku) {
             var p = Math.max(0, Math.min(100, ezviz.akku));
             document.getElementById('akkuText').textContent = p + ' %';
-            document.getElementById('akkuFuell').style.width = Math.max(1, Math.round(p * 0.155)) + 'px';
+            var stufe = p > 87 ? 'full' : p > 62 ? 'three-quarters' : p > 37 ? 'half' : p > 12 ? 'quarter' : 'empty';
+            document.getElementById('akkuSymbol').className = 'fa-light fa-battery-' + stufe;
             akku.classList.toggle('schwach', !!ezviz.akkuSchwach);
             akku.classList.toggle('mittel', !ezviz.akkuSchwach && p <= 40);
         }
-        var warnung = document.getElementById('warnung');
-        warnung.classList.toggle('an', hatAkku && !!ezviz.akkuSchwach);
-        warnung.textContent = hatAkku ? 'Akku schwach (' + ezviz.akku + ' %) – bitte laden' : '';
+        document.getElementById('warnung').classList.toggle('an', hatAkku && !!ezviz.akkuSchwach);
+        document.getElementById('warnungText').textContent = hatAkku ? 'Akku schwach (' + ezviz.akku + ' %) – bitte laden' : '';
+
         var info = [];
         if (!ezviz.online) info.push('Kamera offline');
         if (ezviz.fehler) info.push(ezviz.fehler);
@@ -183,6 +184,22 @@
     // Solange die Kachel sichtbar ist, selbst regelmäßig ein neues Standbild anfordern
     // (gleicher Weg wie der Knopf „Bild“ – unabhängig von den Timern in Symcon)
     var letzteAnfrage = 0;
+
+    // Beim Öffnen der Kachel sofort ein frisches Bild anfordern (Bilder werden nur geholt, wenn jemand hinschaut)
+    setTimeout(function () {
+        if ((ezviz.intervall || 0) > 0 && !document.hidden && !ezviz.schlaf && ezviz.online) {
+            letzteAnfrage = Date.now() / 1000;
+            document.getElementById('laedt').classList.add('an');
+            requestAction('Kachel', JSON.stringify({ aktion: 'bild', auto: true, oeffnen: true }));
+        }
+    }, 300);
+    // Wird die Kachel nach dem Wegschalten wieder sichtbar, ebenfalls gleich aktualisieren
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && (ezviz.intervall || 0) > 0 && !ezviz.schlaf && ezviz.online) {
+            letzteAnfrage = Date.now() / 1000;
+            requestAction('Kachel', JSON.stringify({ aktion: 'bild', auto: true, oeffnen: true }));
+        }
+    });
     setInterval(function () {
         var s = ezviz.intervall || 0;
         if (s <= 0 || document.hidden || ezviz.schlaf || !ezviz.online) return;
@@ -207,5 +224,11 @@
 
     function schwenken(richtung) {
         aktion('schwenken', { richtung: richtung });
+    }
+
+    function liveOeffnen() {
+        if (ezviz.liveID && typeof openObject === 'function') {
+            openObject(ezviz.liveID);
+        }
     }
 </script>

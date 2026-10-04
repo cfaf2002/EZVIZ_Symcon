@@ -39,6 +39,22 @@
                     "caption": "Standbild regelmäßig aktualisieren"
                 },
                 {
+                    "type": "Select",
+                    "name": "StandbildModus",
+                    "caption": "Bilder holen",
+                    "width": "450px",
+                    "options": [
+                        {
+                            "caption": "Nur bei geöffneter Kachel – sofort beim Öffnen, dann regelmäßig (empfohlen)",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Immer, auch im Hintergrund (Medienobjekt stets aktuell)",
+                            "value": 0
+                        }
+                    ]
+                },
+                {
                     "type": "NumberSpinner",
                     "name": "StandbildIntervall",
                     "caption": "Standbild aktualisieren alle",
@@ -99,7 +115,7 @@
                 },
                 {
                     "type": "Label",
-                    "caption": "Das Standbild wird im Hintergrund geholt und liegt dann fertig vor – Kachel und Medienobjekt zeigen es sofort an. Bei einem neuen Alarm und beim Schwenken wird es gleich erneuert. Im Schlafmodus wird kein Standbild geholt. Akku-Kameras holen das Standbild sonst nur bei Alarm und auf Knopfdruck, und zwar über die Cloud."
+                    "caption": "„Nur bei geöffneter Kachel“: Beim Öffnen der Kachel kommt sofort ein frisches Bild, danach im eingestellten Abstand – solange die Kachel offen ist. Ist keine Kachel offen, wird nichts abgerufen (schont Kamera, Akku und Cloud). „Immer“: Das Bild wird auch im Hintergrund geholt, das Medienobjekt ist dann stets aktuell (z. B. für Skripte). Bei einem neuen Alarm und beim Schwenken wird das Bild in beiden Fällen gleich erneuert. Im Schlafmodus wird kein Standbild geholt."
                 }
             ]
         },
