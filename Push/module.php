@@ -57,7 +57,8 @@ class EZVIZPush extends IPSModuleStrict
             : ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION];
         $this->RegisterVariableBoolean('Verbunden', 'Push verbunden', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'tower-broadcast'], 1);
         $this->RegisterVariableInteger('LetzterAlarm', 'Letzter Push-Alarm', $Datum + ['ICON' => 'bell'], 2);
-        $this->RegisterVariableString('Status', 'Push-Status', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'circle-info'], 3);
+        $this->RegisterVariableString('Kamera', 'Letzte Push-Kamera', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'camera-cctv'], 3);
+        $this->RegisterVariableString('Status', 'Push-Status', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'circle-info'], 4);
 
         $this->SetTimerInterval('Ping', 0);
         $this->WriteAttributeBoolean('MqttVerbunden', false);
@@ -528,7 +529,18 @@ class EZVIZPush extends IPSModuleStrict
             }
             $Ext = explode(',', (string) ($Obj['ext'] ?? ''));
             $Serial = (string) ($Ext[2] ?? '');
-            $this->SendDebug('Alarm', 'Kamera ' . $Serial . ', Typ ' . ($Ext[4] ?? '?'), 0);
+            $Name = $this->KameraName($Serial);
+            // Meldungstext der App (z. B. „Bewegung erkannt“) – nur lesbare Texte übernehmen
+            $Text = trim((string) ($Obj['alert'] ?? ''));
+            if ($Text !== '' && preg_match('/[^\x{0000}-\x{024F}\s\p{P}\p{S}]/u', $Text)) {
+                $Text = '';
+            }
+            $this->SendDebug('Alarm', 'Kamera ' . $Name . ' (' . $Serial . '), Typ ' . ($Ext[4] ?? '?') . ($Text !== '' ? ', ' . $Text : ''), 0);
+            if (!@$this->GetIDForIdent('Kamera')) {
+                // nach einem Modul-Update, bevor „Übernehmen“ gedrückt wurde
+                $this->RegisterVariableString('Kamera', 'Letzte Push-Kamera', ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'camera-cctv'], 3);
+            }
+            $this->SetValue('Kamera', date('H:i:s') . ' ' . $Name . ($Text !== '' ? ' – ' . mb_substr($Text, 0, 80) : ''));
             $this->SetValue('LetzterAlarm', time());
             // Konto sofort abrufen lassen – die Kameras holen sich die neuen Daten dann selbst
             $Konto = $this->ReadPropertyInteger('KontoID');
@@ -541,6 +553,22 @@ class EZVIZPush extends IPSModuleStrict
             $Paket = EZVIZ::PushVerschluesseln((string) hex2bin($this->ReadAttributeString('SessionKey')), pack('n', strlen($Antwort)) . $Antwort . '{}');
             $this->Senden(EZVIZ::MqttPaket(0x30, EZVIZ::MqttText('/' . $Bereich . '/' . ($Befehl + 1)) . $Paket));
         }
+    }
+
+    /**
+     * Name der Kamera-Instanz zur Seriennummer (sonst die Seriennummer selbst).
+     */
+    private function KameraName(string $Serial): string
+    {
+        if ($Serial === '') {
+            return 'unbekannte Kamera';
+        }
+        foreach (IPS_GetInstanceListByModuleID(EZVIZ::MODUL_KAMERA) as $ID) {
+            if (strcasecmp(trim((string) @IPS_GetProperty($ID, 'Serial')), $Serial) === 0) {
+                return IPS_GetName($ID);
+            }
+        }
+        return $Serial;
     }
 
     private function NaechstePaketNr(): int

@@ -14,6 +14,7 @@ Beim Einschalten meldet sich das Konto einmal neu an (wie die Android-App). Ford
 | :------- | :----------- |
 | Push verbunden | Verbindung zum Push-Server steht |
 | Letzter Push-Alarm | Zeitpunkt des letzten Alarms über Push |
+| Letzte Push-Kamera | Uhrzeit und Name der Kamera, die den letzten Push-Alarm ausgelöst hat (mit Meldungstext, falls vorhanden) |
 | Push-Status | Aktueller Zustand bzw. letzter Fehler |
 
 Bricht die Verbindung ab, baut die Instanz sie automatisch neu auf (Wartezeit steigend von 30 Sekunden bis 15 Minuten). Der normale Abruf des Kontos läuft unabhängig davon weiter.

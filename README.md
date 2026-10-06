@@ -1,7 +1,7 @@
 # EZVIZ für IP-Symcon
 
 [![IP-Symcon](https://img.shields.io/badge/IP--Symcon-ab%209.0-blue)](https://www.symcon.de)
-[![Modul-Version](https://img.shields.io/badge/Modul--Version-1.0%20%28Build%2032%29-green)](#changelog)
+[![Modul-Version](https://img.shields.io/badge/Modul--Version-1.0%20%28Build%2033%29-green)](#changelog)
 [![PHP](https://img.shields.io/badge/PHP-8.x-777BB4?logo=php&logoColor=white)](https://www.php.net)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow)](LICENSE)
 [![Kachel-Visualisierung](https://img.shields.io/badge/Kachel--Visualisierung-unterst%C3%BCtzt-orange)](Kamera/README.md#kachel)
@@ -63,6 +63,9 @@ EZVIZ ist eine Marke der Hangzhou EZVIZ Network Co., Ltd. Dieses Modul ist ein p
 | EZVIZ Push | EZVIZ | {B4259050-5300-47D8-9DAD-271C4AF28621} |
 
 ## Changelog
+
+**Version 1.0 (Build 33)**
+- Push: Neue Variable „Letzte Push-Kamera“ – zeigt Uhrzeit, Name der auslösenden Kamera und (falls mitgeschickt) den Meldungstext.
 
 **Version 1.0 (Build 32)**
 - Kamera: Bei „Nur bei geöffneter Kachel“ holen Netz-Kameras zusätzlich alle 10 Minuten ein Bild im Hintergrund (einstellbar, 0 = aus). Beim Öffnen der Kachel ist so sofort ein höchstens 10 Minuten altes Bild zu sehen, das frische kommt gleich hinterher. Akku-Kameras bleiben ausgenommen.
