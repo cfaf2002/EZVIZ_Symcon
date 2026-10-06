@@ -60,6 +60,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->RegisterPropertyInteger('StandbildQualitaet', 0);
         $this->RegisterPropertyString('FFmpeg', '');
         $this->RegisterPropertyBoolean('Kachel', true);
+        $this->RegisterPropertyInteger('TileTheme', 0);         // 0 = Symcon-Design, 1 = Dunkel, 2 = Hell
         $this->RegisterPropertyBoolean('Alarmbild', true);
         $this->RegisterPropertyInteger('Bewegungsdauer', 60);
         $this->RegisterPropertyInteger('Schwenkdauer', 500);
@@ -705,7 +706,7 @@ class EZVIZKamera extends IPSModuleStrict
 
     public function GetVisualizationTile(): string
     {
-        $HTML = file_get_contents(__DIR__ . '/module.html');
+        $HTML = file_get_contents(__DIR__ . '/tile.html');
         $Daten = json_encode($this->KachelDaten(true), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
         return $HTML . '<script>handleMessage(' . json_encode($Daten, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES) . ');</script>';
     }
@@ -1286,6 +1287,7 @@ class EZVIZKamera extends IPSModuleStrict
 
         $K = [
             'name'       => IPS_GetName($this->InstanceID),
+            'theme'      => $this->ReadPropertyInteger('TileTheme'),
             'online'     => (bool) $Wert('Online', false),
             'schutz'     => (bool) $Wert('Bewegungserkennung', false),
             'bewegung'   => (bool) $Wert('Bewegung', false),

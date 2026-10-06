@@ -1,10 +1,17 @@
 # EZVIZ für IP-Symcon
 
-[![IP-Symcon](https://img.shields.io/badge/IP--Symcon-ab%209.0-blue)](https://www.symcon.de)
-[![Modul-Version](https://img.shields.io/badge/Modul--Version-1.0%20%28Build%2033%29-green)](#changelog)
-[![PHP](https://img.shields.io/badge/PHP-8.x-777BB4?logo=php&logoColor=white)](https://www.php.net)
-[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow)](LICENSE)
-[![Kachel-Visualisierung](https://img.shields.io/badge/Kachel--Visualisierung-unterst%C3%BCtzt-orange)](Kamera/README.md#kachel)
+[![IP-Symcon ab 9.0](https://img.shields.io/badge/IP--Symcon-ab_9.0-0b6fb3.svg)](https://www.symcon.de)
+[![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
+[![Modul-Version 1.1 (Build 34)](https://img.shields.io/badge/Modul--Version-1.1_(Build_34)-informational.svg)](library.json)
+[![Tests](https://github.com/cfaf2002/EZVIZ_Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/EZVIZ_Symcon/actions/workflows/tests.yml)
+[![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
+[![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
+[![Variablen: Darstellungen](https://img.shields.io/badge/Variablen-Darstellungen-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/darstellungen/)
+[![Kachel-Visualisierung: HTML-SDK](https://img.shields.io/badge/Kachel--Visualisierung-HTML--SDK-orange.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/html-sdk/)
+[![Farbschema: Symcon-Design, Dunkel, Hell](https://img.shields.io/badge/Farbschema-Symcon--Design_%7C_Dunkel_%7C_Hell-blueviolet.svg)](STYLEGUIDE.md)
+![Sprache: Deutsch](https://img.shields.io/badge/Sprache-Deutsch-blueviolet.svg)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-green.svg)](LICENSE)
+[![Cloud: EZVIZ (inoffiziell)](https://img.shields.io/badge/Cloud-EZVIZ_(inoffiziell)-lightgrey.svg)](https://www.ezviz.com)
 
 Bindet EZVIZ-Kameras (z. B. C8C) in IP-Symcon ein: Status, Bewegungserkennung, Schlafmodus und weitere Schalter über die EZVIZ-Cloud, Schwenken bei Schwenk-/Neigekameras, letzter Alarm mit Bild – und der Livestream lokal per RTSP.
 
@@ -63,6 +70,10 @@ EZVIZ ist eine Marke der Hangzhou EZVIZ Network Co., Ltd. Dieses Modul ist ein p
 | EZVIZ Push | EZVIZ | {B4259050-5300-47D8-9DAD-271C4AF28621} |
 
 ## Changelog
+
+**Version 1.1 (Build 34)**
+- Einheitliches Design nach `STYLEGUIDE.md`: Kachel-Grundlage (Farben, Schrift, Radien, Zustandsfarben) und Einstellung „Farbschema der Kachel“ (Symcon-Design, Dunkel, Hell); Kachel-Datei heißt `tile.html`; einheitliche Badges; gemeinsamer Test-Workflow mit Struktur- und Ladetest
+- Kachel nutzt die Systemschrift statt der geerbten Schrift
 
 **Version 1.0 (Build 33)**
 - Push: Neue Variable „Letzte Push-Kamera“ – zeigt Uhrzeit, Name der auslösenden Kamera und (falls mitgeschickt) den Meldungstext.

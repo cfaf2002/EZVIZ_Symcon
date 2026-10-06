@@ -29,6 +29,25 @@
             "caption": "Eigene Kachel verwenden (Standbild, Status, Schwenken)"
         },
         {
+            "type": "Select",
+            "name": "TileTheme",
+            "caption": "Farbschema der Kachel",
+            "options": [
+                {
+                    "caption": "Symcon-Design (Farben der Visualisierung)",
+                    "value": 0
+                },
+                {
+                    "caption": "Dunkel",
+                    "value": 1
+                },
+                {
+                    "caption": "Hell",
+                    "value": 2
+                }
+            ]
+        },
+        {
             "type": "ExpansionPanel",
             "caption": "Standbild (sofort sichtbar)",
             "expanded": true,
