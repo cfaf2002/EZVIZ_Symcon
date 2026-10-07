@@ -439,13 +439,20 @@ class EZVIZKamera extends IPSModuleStrict
 
         $Result = $this->Senden('PUT', $Pfad, $Form + ['action' => 'START', 'uuid' => self::Uuid()]);
         usleep(max(100, min(5000, $this->ReadPropertyInteger('Schwenkdauer'))) * 1000);
-        $this->Senden('PUT', $Pfad, $Form + ['action' => 'STOP', 'uuid' => self::Uuid()]);
+        $Stop = $this->Senden('PUT', $Pfad, $Form + ['action' => 'STOP', 'uuid' => self::Uuid()]);
+        if (!$Stop['Success']) {
+            // Ohne STOP dreht die Kamera bis zum Anschlag weiter – einmal wiederholen
+            $Stop = $this->Senden('PUT', $Pfad, $Form + ['action' => 'STOP', 'uuid' => self::Uuid()]);
+            if (!$Stop['Success']) {
+                $this->Fehler('Schwenken stoppen', $Stop);
+            }
+        }
 
         if (!$Result['Success']) {
             $this->Fehler('Schwenken', $Result);
             return false;
         }
-        return true;
+        return $Stop['Success'];
     }
 
     /**
@@ -465,7 +472,7 @@ class EZVIZKamera extends IPSModuleStrict
         try {
             $Ok = $this->StandbildHolen();
         } catch (Throwable $e) {
-            $Text = 'Fehler im Modul: ' . $e->getMessage() . ' (Zeile ' . $e->getLine() . ')';
+            $Text = $this->Maskiert('Fehler im Modul: ' . $e->getMessage() . ' (Zeile ' . $e->getLine() . ')');
             $this->FehlerSetzen(' ' . $Text);
             $this->SendDebug('Standbild', $Text, 0);
             $Ok = false;
@@ -561,7 +568,7 @@ class EZVIZKamera extends IPSModuleStrict
     {
         $Fehler = $this->ReadAttributeString('StandbildFehler');
         if ($Fehler !== '') {
-            return 'Letzter Versuch um ' . $Fehler;
+            return 'Letzter Versuch um ' . $this->Maskiert($Fehler);
         }
         $Zeit = $this->ReadAttributeInteger('StandbildZeit');
         if ($Zeit <= 0) {
@@ -574,7 +581,7 @@ class EZVIZKamera extends IPSModuleStrict
     private function StandbildInfoText(): string
     {
         $Zeit = $this->ReadAttributeInteger('StandbildZeit');
-        $Fehler = $this->ReadAttributeString('StandbildFehler');
+        $Fehler = $this->Maskiert($this->ReadAttributeString('StandbildFehler'));
         $Weg = $this->ReadAttributeString('StandbildWeg');
         [$Ms, $Grund] = $this->AutoIntervall();
         $Lauf = $this->ReadAttributeInteger('LetzterLauf');
@@ -634,7 +641,7 @@ class EZVIZKamera extends IPSModuleStrict
         if ($Bild === null && $Quelle !== 2) {
             if (!$Lokal && $Quelle === 0 && !$this->HatAkku() && $this->ReadAttributeString('LokalFehler') !== '') {
                 // Lokal pausiert – Grund des letzten lokalen Fehlschlags mit anzeigen
-                $Fehler[] = 'lokal pausiert (' . $this->ReadAttributeString('LokalFehler') . ')';
+                $Fehler[] = 'lokal pausiert (' . $this->Maskiert($this->ReadAttributeString('LokalFehler')) . ')';
             }
             $Bild = $this->StandbildCloud($Fehler);
             $Weg = 'Cloud';
@@ -695,7 +702,7 @@ class EZVIZKamera extends IPSModuleStrict
 
     private function FehlerSetzen(string $Text): void
     {
-        $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . trim($Text));
+        $this->WriteAttributeString('StandbildFehler', date('H:i:s') . ' ' . trim($this->Maskiert($Text)));
         $this->WriteAttributeInteger('StandbildFehlerZeit', time());
     }
 
@@ -765,7 +772,7 @@ class EZVIZKamera extends IPSModuleStrict
         $this->AbrufBeobachten();
         $Result = EZVIZ::Response(@$this->SendDataToParent(EZVIZ::Request('Status', ['Serial' => $this->Serial()])));
         if ($Result['Success'] && is_array($Result['Data'])) {
-            $this->Verarbeiten($Result['Data'], true);
+            $this->Verarbeiten($Result['Data'], true, (int) ($Result['Stand'] ?? 0));
         } elseif ($Result['Code'] == 404 && $Result['Error'] === 'Gerät nicht im Konto') {
             $this->SetStatus(EZVIZ::STATUS_NICHT_GEFUNDEN);
         } elseif ($this->GetStatus() != IS_ACTIVE) {
@@ -774,7 +781,10 @@ class EZVIZKamera extends IPSModuleStrict
         }
     }
 
-    private function Verarbeiten(array $D, bool $Neu): void
+    /**
+     * $Stand = Zeitpunkt, zu dem das Konto die Daten abgerufen hat (0 = unbekannt, ältere Fassung).
+     */
+    private function Verarbeiten(array $D, bool $Neu, int $Stand = 0): void
     {
         if ($Neu) {
             $this->WriteAttributeString('Daten', json_encode($D));
@@ -882,7 +892,8 @@ class EZVIZKamera extends IPSModuleStrict
         }
 
         if ($Neu) {
-            $this->Setzen('Zeitpunkt', time());
+            // Zeitpunkt des Abrufs beim Konto – nicht „jetzt“, sonst sähen alte Daten aus dem Zwischenspeicher frisch aus
+            $this->Setzen('Zeitpunkt', $Stand > 0 ? $Stand : time());
             $this->KachelSenden();
         }
         if ($this->GetStatus() != IS_ACTIVE) {
@@ -996,7 +1007,8 @@ class EZVIZKamera extends IPSModuleStrict
             $this->SendDebug('Standbild lokal', end($Fehler), 0);
             return null;
         }
-        $Datei = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ezviz_' . $this->InstanceID . '.jpg';
+        // Eigene Datei je Aufruf – Standbilder können parallel laufen (Timer, Kachel, Button)
+        $Datei = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ezviz_' . $this->InstanceID . '_' . bin2hex(random_bytes(4)) . '.jpg';
         @unlink($Datei);
 
         $Befehl = escapeshellarg($FFmpeg) . ' -hide_banner -loglevel error -rtsp_transport tcp -timeout 8000000'
@@ -1005,6 +1017,8 @@ class EZVIZKamera extends IPSModuleStrict
             . ' -an -sn -dn -frames:v 1 -q:v 2 -y ' . escapeshellarg($Datei);
         $Start = microtime(true);
         [$Code, $Ausgabe] = self::Ausfuehren($Befehl, $Einfach ? 8 : 12);
+        // FFmpeg nennt in Fehlermeldungen oft die komplette Adresse samt Verifizierungscode – sofort ausblenden
+        $Ausgabe = array_map(fn ($Zeile) => $this->Maskiert((string) $Zeile), $Ausgabe);
         $Bild = is_file($Datei) ? file_get_contents($Datei) : false;
         @unlink($Datei);
         if ($Code !== 0 || !is_string($Bild) || $Bild === '') {
@@ -1340,7 +1354,7 @@ class EZVIZKamera extends IPSModuleStrict
         $K['fehler'] = '';
         $FehlerZeit = $this->ReadAttributeInteger('StandbildFehlerZeit');
         if ($FehlerZeit > (int) $K['bildZeit'] && $FehlerZeit > time() - 1800) {
-            $K['fehler'] = $this->ReadAttributeString('StandbildFehler');
+            $K['fehler'] = $this->Maskiert($this->ReadAttributeString('StandbildFehler'));
         }
         return $K;
     }
@@ -1594,6 +1608,14 @@ class EZVIZKamera extends IPSModuleStrict
             $Pfad = '/' . ltrim($this->ReadPropertyString('Pfad'), '/');
         }
         return 'rtsp://' . $Zugang . $IP . ':' . $this->ReadPropertyInteger('Port') . $Pfad;
+    }
+
+    /**
+     * Blendet den Verifizierungscode (RTSP-Passwort) in Texten für Debug, Formular und Kachel aus.
+     */
+    private function Maskiert(string $Text): string
+    {
+        return EZVIZ::Maskieren($Text, $this->ReadPropertyString('Verifizierungscode'));
     }
 
     private function IPAdresse(): string

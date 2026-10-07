@@ -55,6 +55,7 @@ class EZVIZ
     public const STATUS_CODE_NOETIG = 206;
     public const STATUS_NICHT_GEFUNDEN = 207;
     public const STATUS_PUSH_FEHLER = 208;
+    public const STATUS_WARTEN = 209;
 
     /**
      * Schalter der Kameras (Typnummer => [Ident-Name, Anzeigename, Icon]).
@@ -127,6 +128,21 @@ class EZVIZ
             }
         }
         return 0;
+    }
+
+    /**
+     * Blendet Zugangsdaten in Texten aus (z. B. FFmpeg-Fehlermeldungen mit der RTSP-Adresse):
+     * "rtsp://admin:CODE@…" wird zu "rtsp://***@…", zusätzlich jedes Vorkommen der übergebenen Geheimnisse.
+     */
+    public static function Maskieren(string $Text, string ...$Geheim): string
+    {
+        $Text = (string) preg_replace('#\b(rtsps?)://[^\s@/]*@#i', '$1://***@', $Text);
+        foreach ($Geheim as $G) {
+            if (strlen($G) >= 3) {
+                $Text = str_ireplace([$G, rawurlencode($G)], '***', $Text);
+            }
+        }
+        return $Text;
     }
 
     /**

@@ -38,6 +38,8 @@ class EZVIZKonto extends IPSModuleStrict
         $this->RegisterAttributeString('LetzterFehler', '');
         $this->RegisterAttributeString('UserId', '');
         $this->RegisterAttributeString('PushServer', '');
+        $this->RegisterAttributeInteger('Fehlversuche', 0);
+        $this->RegisterAttributeInteger('WartenBis', 0);
 
         $this->RegisterTimer('Aktualisieren', 0, 'EZVIZ_RefreshAll($_IPS[\'TARGET\']);');
     }
@@ -63,6 +65,8 @@ class EZVIZKonto extends IPSModuleStrict
         }
 
         $this->PushInstanzPruefen();
+        // Übernehmen startet sofort einen neuen Anmeldeversuch
+        $this->WartezeitZuruecksetzen();
 
         if (!$this->Pruefen()) {
             return;
@@ -103,7 +107,9 @@ class EZVIZKonto extends IPSModuleStrict
                 break;
             }
         }
-        $An = $this->ReadPropertyBoolean('Push') && $this->ReadPropertyBoolean('Aktiv');
+        // Nur der Push-Schalter entscheidet – ein kurz deaktiviertes Konto soll die Push-Instanz
+        // samt Variablen (Ereignisse, Verknüpfungen) nicht löschen
+        $An = $this->ReadPropertyBoolean('Push');
         if ($An && $Vorhanden === 0) {
             $IO = IPS_CreateInstance(EZVIZ::CLIENT_SOCKET);
             IPS_SetName($IO, 'EZVIZ Push Verbindung');
@@ -194,8 +200,11 @@ class EZVIZKonto extends IPSModuleStrict
         if (!$this->Pruefen()) {
             return false;
         }
-        $this->SitzungLoeschen();
-        $Ok = $this->Anmelden();
+        $this->WartezeitZuruecksetzen();
+        $Ok = $this->Exklusiv(function (): bool {
+            $this->SitzungLoeschen();
+            return $this->Anmelden();
+        });
         if ($Ok) {
             $this->Aktualisieren();
         }
@@ -279,8 +288,14 @@ class EZVIZKonto extends IPSModuleStrict
         }
         // Ältere Anmeldung ohne Benutzer-ID: einmal neu anmelden
         if ($this->ReadAttributeString('UserId') === '') {
-            $this->SitzungLoeschen();
-            if (!$this->Anmelden()) {
+            $Ok = $this->Exklusiv(function (): bool {
+                if ($this->ReadAttributeString('UserId') !== '') {
+                    return true; // inzwischen von einem anderen Ablauf erledigt
+                }
+                $this->SitzungLoeschen();
+                return $this->Anmelden();
+            });
+            if (!$Ok) {
                 return $Fehler('Neue Anmeldung fehlgeschlagen');
             }
         }
@@ -344,7 +359,7 @@ class EZVIZKonto extends IPSModuleStrict
                 $Cache = $this->CacheLesen();
                 $Serial = (string) ($Data['Serial'] ?? '');
                 $Result = isset($Cache[$Serial])
-                    ? ['Success' => true, 'Code' => 200, 'Data' => $Cache[$Serial], 'Error' => '']
+                    ? ['Success' => true, 'Code' => 200, 'Data' => $Cache[$Serial], 'Error' => '', 'Stand' => $this->ReadAttributeInteger('Stand')]
                     : ['Success' => false, 'Code' => 404, 'Data' => null, 'Error' => count($Cache) ? 'Gerät nicht im Konto' : 'Noch keine Daten'];
                 break;
 
@@ -580,21 +595,79 @@ class EZVIZKonto extends IPSModuleStrict
      * Zugangsdaten oder fehlendem Bestätigungscode keine neue Anmeldung –
      * sonst würde EZVIZ das Konto sperren bzw. ständig neue Codes schicken.
      */
-    private function Verbinden(bool $Automatisch = false): bool
+    private function Verbinden(bool $Automatisch = false, string $Abgelaufen = ''): bool
     {
         if ($Automatisch && in_array($this->GetStatus(), [EZVIZ::STATUS_LOGIN_FEHLER, EZVIZ::STATUS_CODE_NOETIG], true)) {
             return false;
         }
-        if ($this->ReadAttributeString('SessionId') !== '') {
+        $Sitzung = $this->ReadAttributeString('SessionId');
+        if ($Sitzung !== '' && $Sitzung !== $Abgelaufen) {
             if ($this->GetStatus() != IS_ACTIVE) {
                 $this->SetStatus(IS_ACTIVE);
             }
             return true;
         }
-        if ($this->ReadAttributeString('RefreshId') !== '' && $this->SitzungErneuern()) {
-            return true;
+        if ($Automatisch && $this->ReadAttributeInteger('WartenBis') > time()) {
+            return false;
         }
-        return $this->Anmelden();
+        // Nur ein Ablauf erneuert die Sitzung – sonst verwirft der zweite die frische Sitzung des ersten
+        // und erzwingt eine neue Anmeldung (im schlimmsten Fall mit Bestätigungscode)
+        return $this->Exklusiv(function () use ($Abgelaufen): bool {
+            $Sitzung = $this->ReadAttributeString('SessionId');
+            if ($Sitzung !== '' && $Sitzung !== $Abgelaufen) {
+                return true; // inzwischen von einem anderen Ablauf erneuert
+            }
+            if ($Sitzung !== '') {
+                $this->WriteAttributeString('SessionId', '');
+            }
+            if ($this->ReadAttributeString('RefreshId') !== '') {
+                $Erneuert = $this->SitzungErneuern();
+                if ($Erneuert !== false) {
+                    return (bool) $Erneuert; // erneuert oder Netzstörung (dann Erneuerungsschlüssel behalten)
+                }
+            }
+            return $this->Anmelden();
+        });
+    }
+
+    /**
+     * Führt eine Anmeldung bzw. Sitzungserneuerung exklusiv aus (Semaphore je Konto).
+     */
+    private function Exklusiv(callable $Aufgabe): bool
+    {
+        $Name = 'EZVIZ_Sitzung_' . $this->InstanceID;
+        if (!IPS_SemaphoreEnter($Name, 30000)) {
+            $this->SendDebug('Sitzung', 'Anmeldung läuft noch in einem anderen Ablauf – übersprungen', 0);
+            return false;
+        }
+        try {
+            return (bool) $Aufgabe();
+        } finally {
+            IPS_SemaphoreLeave($Name);
+        }
+    }
+
+    /**
+     * Vorübergehende Ablehnung (zu viele Anfragen, Konto kurz gesperrt, unbekannter Fehler):
+     * nicht im normalen Takt weiter probieren. Wartezeit verdoppelt sich: 5 Minuten, 10, 20 … bis höchstens 6 Stunden.
+     * „Übernehmen“ oder „Verbindung testen“ starten sofort einen neuen Versuch.
+     */
+    private function WartezeitSetzen(): int
+    {
+        $Anzahl = $this->ReadAttributeInteger('Fehlversuche') + 1;
+        $this->WriteAttributeInteger('Fehlversuche', $Anzahl);
+        $Sekunden = (int) min(21600, 300 * 2 ** min(10, $Anzahl - 1));
+        $this->WriteAttributeInteger('WartenBis', time() + $Sekunden);
+        $this->SendDebug('Anmelden', sprintf('%d. Ablehnung – nächster Versuch in %d Minuten', $Anzahl, $Sekunden / 60), 0);
+        return $Sekunden;
+    }
+
+    private function WartezeitZuruecksetzen(): void
+    {
+        if ($this->ReadAttributeInteger('Fehlversuche') !== 0 || $this->ReadAttributeInteger('WartenBis') !== 0) {
+            $this->WriteAttributeInteger('Fehlversuche', 0);
+            $this->WriteAttributeInteger('WartenBis', 0);
+        }
     }
 
     private function Anmelden(int $Versuch = 0): bool
@@ -635,6 +708,7 @@ class EZVIZKonto extends IPSModuleStrict
             if ($MitCode) {
                 $this->WriteAttributeString('CodeVerwendet', $Code);
             }
+            $this->WartezeitZuruecksetzen();
             $this->SetStatus(IS_ACTIVE);
             return true;
         }
@@ -663,17 +737,24 @@ class EZVIZKonto extends IPSModuleStrict
             case 1014:
                 $Text = 'Passwort falsch';
                 break;
-            case 1015:
-                $Text = 'Konto vorübergehend gesperrt (zu viele Versuche)';
-                break;
             default:
-                if ($Result['Code'] == 0 || $Result['Code'] >= 500) {
+                if ($ApiCode !== 1015 && ($Result['Code'] == 0 || $Result['Code'] >= 500)) {
                     // Netz- oder Serverstörung: beim nächsten Abruf erneut versuchen
                     $this->SetStatus(EZVIZ::STATUS_KEINE_VERBINDUNG);
                     $this->SendDebug('Anmelden', 'Server nicht erreichbar: ' . $Result['Error'], 0);
                     return false;
                 }
-                $Text = 'HTTP ' . $Result['Code'] . ', Code ' . $ApiCode . ' ' . (string) ($D['meta']['message'] ?? $Result['Error']);
+                // Vorübergehende Ablehnung (HTTP 429, Konto kurz gesperrt, unbekannter Code):
+                // kein dauerhafter Stopp, aber Wartezeit mit steigendem Abstand
+                $Text = $ApiCode === 1015
+                    ? 'Konto vorübergehend gesperrt (zu viele Versuche)'
+                    : 'HTTP ' . $Result['Code'] . ', Code ' . $ApiCode . ' ' . (string) ($D['meta']['message'] ?? $Result['Error']);
+                $Minuten = (int) round($this->WartezeitSetzen() / 60);
+                if ($this->GetStatus() != EZVIZ::STATUS_WARTEN) {
+                    $this->SetStatus(EZVIZ::STATUS_WARTEN);
+                }
+                $this->LogMessage('Anmeldung bei EZVIZ vorübergehend abgelehnt: ' . trim($Text) . ' – neuer Versuch in ' . $Minuten . ' min', KL_WARNING);
+                return false;
         }
         $this->SetStatus(EZVIZ::STATUS_LOGIN_FEHLER);
         $this->LogMessage('Anmeldung bei EZVIZ fehlgeschlagen: ' . $Text, KL_ERROR);
@@ -689,7 +770,10 @@ class EZVIZKonto extends IPSModuleStrict
         $this->SendDebug('Code anfordern', EZVIZ::ApiOk($Result['Data']) ? 'angefordert' : 'fehlgeschlagen', 0);
     }
 
-    private function SitzungErneuern(): bool
+    /**
+     * true = erneuert, false = abgelehnt (neue Anmeldung nötig), null = Netz- oder Serverstörung.
+     */
+    private function SitzungErneuern(): ?bool
     {
         $Result = $this->Http('PUT', 'https://' . $this->ApiDomain() . EZVIZ::SESSION_ERNEUERN, [], [
             'refreshSessionId' => $this->ReadAttributeString('RefreshId'),
@@ -704,6 +788,11 @@ class EZVIZKonto extends IPSModuleStrict
                 $this->SetStatus(IS_ACTIVE);
             }
             return true;
+        }
+        if ($Result['Code'] == 0 || $Result['Code'] == 429 || $Result['Code'] >= 500) {
+            // Störung, keine Ablehnung: Erneuerungsschlüssel behalten und beim nächsten Abruf erneut versuchen
+            $this->SendDebug('Sitzung', 'Erneuern nicht möglich (' . $Result['Error'] . ') – neuer Versuch beim nächsten Abruf', 0);
+            return null;
         }
         $this->SendDebug('Sitzung', 'Erneuern fehlgeschlagen, neue Anmeldung nötig', 0);
         $this->SitzungLoeschen();
@@ -738,6 +827,8 @@ class EZVIZKonto extends IPSModuleStrict
         if (!$this->Verbinden(true)) {
             return ['Success' => false, 'Code' => 0, 'Data' => null, 'Error' => 'Nicht angemeldet – Konto-Instanz prüfen'];
         }
+        // Mit dieser Sitzung wird angefragt – läuft sie ab, wird genau sie ersetzt
+        $Abgelaufen = $this->ReadAttributeString('SessionId');
 
         $Result = $this->Http($Method, 'https://' . $this->ApiDomain() . $Path, $Query, $Form);
         $ApiCode = EZVIZ::ApiCode($Result['Data']);
@@ -747,9 +838,7 @@ class EZVIZKonto extends IPSModuleStrict
             || ($Path === EZVIZ::GERAETELISTE && $Result['Code'] == 200 && $ApiCode !== 200);
         if ($Sitzung) {
             $this->SendDebug('Anfrage', 'Sitzung abgelaufen – erneuere', 0);
-            $this->WriteAttributeString('SessionId', '');
-            $Ok = ($this->ReadAttributeString('RefreshId') !== '' && $this->SitzungErneuern()) || $this->Verbinden(true);
-            if ($Ok) {
+            if ($this->Verbinden(true, $Abgelaufen)) {
                 $Result = $this->Http($Method, 'https://' . $this->ApiDomain() . $Path, $Query, $Form);
             }
         }

@@ -89,3 +89,7 @@ bool   EZVIZ_Move(int $InstanzID, string $Richtung);              // 'left', 'ri
 string EZVIZ_GetStreamUrl(int $InstanzID);                        // RTSP-Adresse mit Zugangsdaten
 array  EZVIZ_GetData(int $InstanzID);                             // Rohdaten aus der Cloud (Fehlersuche)
 ```
+
+Nur intern (Ziele der Timer bzw. Buttons der Instanz, nicht für eigene Skripte gedacht): `EZVIZ_TimerSnapshot`, `EZVIZ_TimerSnapshotOnce`, `EZVIZ_TimerFetch`, `EZVIZ_TimerCheck`, `EZVIZ_TimerMotionReset`, `EZVIZ_GetTimerInfo`, `EZVIZ_GetBatteryInfo`.
+
+Der Verifizierungscode wird in Fehlertexten (Debug, Formular, Kachel) als `rtsp://***@…` ausgeblendet. Nur `EZVIZ_GetStreamUrl` und das Medienobjekt „Livestream“ enthalten ihn, weil der Stream ihn braucht.

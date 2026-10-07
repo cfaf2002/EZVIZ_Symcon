@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 9.0](https://img.shields.io/badge/IP--Symcon-ab_9.0-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 1.1 (Build 35)](https://img.shields.io/badge/Modul--Version-1.1_(Build_35)-informational.svg)](library.json)
+[![Modul-Version 1.2 (Build 36)](https://img.shields.io/badge/Modul--Version-1.2_(Build_36)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/EZVIZ_Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/EZVIZ_Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -70,6 +70,17 @@ EZVIZ ist eine Marke der Hangzhou EZVIZ Network Co., Ltd. Dieses Modul ist ein p
 | EZVIZ Push | EZVIZ | {B4259050-5300-47D8-9DAD-271C4AF28621} |
 
 ## Changelog
+
+**Version 1.2 (Build 36)**
+- Kamera: Der Verifizierungscode (RTSP-Passwort) wird in FFmpeg-Fehlermeldungen ausgeblendet (`rtsp://***@…`) und landet nicht mehr im Debug, im Formular oder in der Kachel; auch bereits gespeicherte Fehlertexte werden maskiert angezeigt
+- Kamera: Standbilder, die gleichzeitig angefordert werden, nutzen eigene Temp-Dateien und überschreiben sich nicht mehr
+- Kamera: Schlägt das Stoppen beim Schwenken fehl, wird es einmal wiederholt und sonst gemeldet
+- Kamera: „Letzte Aktualisierung“ zeigt den Zeitpunkt des Abrufs beim Konto statt der Uhrzeit, zu der die Kamera zwischengespeicherte Daten übernommen hat
+- Kamera-Kachel: Lade-Animation ruht, solange die Kachel nicht sichtbar ist
+- Konto: Sitzungserneuerung und Anmeldung laufen exklusiv (Semaphore) – zwei gleichzeitige Abrufe verwerfen sich nicht mehr gegenseitig die frische Sitzung
+- Konto: HTTP 429, „Konto vorübergehend gesperrt“ und unbekannte Fehler beim Anmelden stoppen den Abruf nicht mehr dauerhaft, sondern führen zu einer Wartezeit mit steigendem Abstand (5 min bis 6 h, neuer Status 209); Netz- und Serverstörungen beim Erneuern der Sitzung verwerfen den Erneuerungsschlüssel nicht mehr
+- Konto: Deaktivieren des Kontos löscht die Push-Instanz samt Variablen nicht mehr (nur noch der Push-Schalter)
+- README: interne Befehle (Timer-Ziele, `EZVIZ_GetPushInfo`) als intern gekennzeichnet
 
 **Version 1.1 (Build 35)**
 - Hausstil: Regel für die Modulliste (`vendor` gesetzt, höchstens ein Alias) in `STYLEGUIDE.md` und Strukturprüfung ergänzt

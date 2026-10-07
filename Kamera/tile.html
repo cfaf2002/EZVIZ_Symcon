@@ -4,6 +4,7 @@
     SPDX-License-Identifier: MIT
 
     Standbild/Alarmbild, Status-Marken, Schwenken, Schalter. Symbole aus Font Awesome der Visualisierung mit Ersatzzeichen.
+    Sicherheit: Texte nur per textContent; RTSP-Zugangsdaten in Fehlertexten werden ausgeblendet.
     Gestaltung nach STYLEGUIDE.md (Kachel-Grundlage, Farbschema über applyTheme).
 -->
 <style>
@@ -99,6 +100,8 @@
     .laedt { position: absolute; left: 10px; bottom: 10px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; animation: dreh 0.8s linear infinite; display: none; }
     .laedt.an { display: block; }
     @keyframes dreh { to { transform: rotate(360deg); } }
+    /* Kachel nicht sichtbar: Animation ruht */
+    html.versteckt .laedt { animation-play-state: paused; }
     .knoepfe { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
     .knopf { border: 1px solid var(--ez-rand); background: var(--ez-flaeche); color: inherit; border-radius: var(--radius-s); height: 38px; font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 6px; }
     .knopf:hover { background: var(--ez-flaeche-hover); }
@@ -211,10 +214,15 @@
 
         var info = [];
         if (!ezviz.online) info.push('Kamera offline');
-        if (ezviz.fehler) info.push(ezviz.fehler);
+        if (ezviz.fehler) info.push(maskieren(ezviz.fehler));
         if (ezviz.alarm) info.push('Letzter Alarm: ' + datum(ezviz.alarm) + (ezviz.alarmText ? ' – ' + ezviz.alarmText : ''));
         document.getElementById('info').textContent = info.join(' · ');
         alter();
+    }
+
+    // Zugangsdaten nie anzeigen (das Modul blendet sie schon aus – doppelt hält besser)
+    function maskieren(text) {
+        return String(text).replace(/\b(rtsps?):\/\/[^\s@\/]*@/gi, '$1://***@');
     }
 
     function datum(t) {
@@ -249,6 +257,7 @@
     }, 50);
     // Wird die Kachel nach dem Wegschalten wieder sichtbar, ebenfalls gleich aktualisieren
     document.addEventListener('visibilitychange', function () {
+        document.documentElement.classList.toggle('versteckt', document.hidden);
         if (!document.hidden && (ezviz.intervall || 0) > 0 && !ezviz.schlaf && ezviz.online) {
             letzteAnfrage = Date.now() / 1000;
             requestAction('Kachel', JSON.stringify({ aktion: 'bild', auto: true, oeffnen: true }));

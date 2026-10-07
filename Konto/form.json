@@ -149,6 +149,11 @@
             "caption": "EZVIZ-Server nicht erreichbar – neuer Versuch beim nächsten Abruf"
         },
         {
+            "code": 209,
+            "icon": "error",
+            "caption": "Anmeldung vorübergehend abgelehnt – neuer Versuch nach Wartezeit (Details im Meldungsfenster)"
+        },
+        {
             "code": 206,
             "icon": "inactive",
             "caption": "Bestätigungscode wurde angefordert – bitte eintragen und übernehmen"

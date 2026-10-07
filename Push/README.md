@@ -22,3 +22,7 @@ Bricht die Verbindung ab, baut die Instanz sie automatisch neu auf (Wartezeit st
 ## Fehlersuche
 
 Button „Push-Verbindung neu aufbauen“. Details im Debug der Instanz.
+
+`EZVIZ_PushStart` und `EZVIZ_PushPing` sind nur intern (Ziele der Timer bzw. des Buttons).
+
+Wird das Konto deaktiviert, bleibt die Push-Instanz samt Variablen erhalten; entfernt wird sie nur, wenn im Konto der Schalter „Alarme sofort per Push empfangen“ ausgeschaltet wird.
